@@ -1,0 +1,133 @@
+# This file is a template, and might need editing before it works on your project.
+# Official language image. Look for the different tagged releases at:
+# https://hub.docker.com/r/library/python/tags/
+image: cern/cc7-base
+
+# Change pip's cache directory to be inside the project directory since we can
+# only cache local items.
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+# Pip's cache doesn't store the python packages
+# https://pip.pypa.io/en/stable/reference/pip_install/#caching
+#
+# If you want to also cache the installed packages, you have to install
+# them in a virtualenv and cache it as well.
+cache:
+  paths:
+    - .cache/pip
+    - my_venv/
+
+before_script:
+  - python -V  # Print out python version for debugging
+  - yum install -y python3
+  - yum -y install python3-pip
+  - yum install -y python-pip
+  - pip3 install importlib_metadata
+  - pip3 install virtualenv
+#  - virtualenv my_venv
+#  - source my_venv/bin/activate
+  - |
+    cat > /etc/yum.repos.d/centos-cloud-openstack.repo << EOF
+    [centos-cloud-openstack]
+    name=centos-cloud-openstack
+    baseurl=http://linuxsoft.cern.ch/cern/centos/\$releasever/cloud/\$basearch/openstack-train
+    enabled=1
+    gpgcheck=0
+    priority=1
+    EOF
+  - |
+    cat > /etc/yum.repos.d/ai7-stable.repo << EOF
+    [ai7-stable]
+    name=Utilities for the Agile Infrastructure project [stable]
+    baseurl=http://linuxsoft.cern.ch/internal/repos/ai7-stable/x86_64/os
+    enabled=1
+    gpgcheck=0
+    priority=30
+    EOF
+  - |
+    cat > /etc/yum.repos.d/cci7-openstack-clients.repo << EOF
+    [cci7-openstack-clients]
+    name=CERN rebuilds for OpenStack clients
+    baseurl=http://linuxsoft.cern.ch/internal/repos/openstackclients7-train-stable/x86_64/os/
+    enabled=1
+    gpgcheck=0
+    includepkgs=argo,helm,kubernetes-client,python-keystoneclient-kerberos,python-keystoneclient-x509,python2-magnumclient
+    priority=5
+    EOF
+  - |
+    cat > /etc/yum.repos.d/cci7-utils.repo << EOF
+    [cci7-utils]
+    name=CERN Cloud Infrastructure Utils
+    baseurl=http://linuxsoft.cern.ch/internal/repos/cci7-utils-stable/x86_64/os/
+    enabled=1
+    gpgcheck=0
+    includepkgs=
+    priority=5
+    EOF
+  - |
+    cat > /etc/yum.repos.d/authz-stable.repo << EOF
+    [authz-stable]
+    name=MAlt-Authentication repository
+    baseurl=http://linuxsoft.cern.ch/internal/repos/authz7-stable/x86_64/os
+    enabled=1
+    gpgcheck=0
+    includepkgs=auth-get-sso-cookie
+    priority=5
+    EOF
+  - |
+    cat > /etc/yum.repos.d/centos7-cloud-openstack-train.repo << EOF
+    [centos7-cloud-openstack-train]
+    name=Openstack RDO
+    baseurl=http://linuxsoft.cern.ch/cern/centos/7/cloud/x86_64/openstack-train
+    enabled=1
+    gpgcheck=0
+    exclude=puppet*,facter,hiera,mcollective*
+    includepkgs=includepkgs=pyOpenSSL,pyparsing,python-backports,python-cliff,python-cmd2,python-debtcollector,python-decorator,python-keyring,python-netaddr,python-netifaces,python-openstackclient-lang,python-oslo-concurrency-lang,python-oslo-i18n-lang,python-oslo-log-lang,python-oslo-middleware-lang,python-oslo-utils-lang,python-paste-deploy,python-pyngus,python-routes,python-six,python-tempita,python-webob,python-wrapt,python2-amqp,python2-appdirs,python2-asn1crypto,python2-babel,python2-barbicanclient,python2-cachetools,python2-cffi,python2-chardet,python2-cinderclient,python2-cliff,python2-cmd2,python2-contextlib2,python2-cryptography,python2-debtcollector,python2-deprecation,python2-dogpile-cache,python2-eventlet,python2-fasteners,python2-fixtures,python2-funcsigs,python2-futurist,python2-glanceclient,python2-greenlet,python2-heatclient,python2-idna,python2-ipaddress,python2-ironic-inspector-client,python2-ironicclient,python2-jinja2,python2-keystoneauth1,python2-keystoneclient,python2-kombu,python2-magnumclient,python2-manilaclient,python2-markupsafe,python2-mistralclient,python2-monotonic,python2-munch,python2-netaddr,python2-neutronclient,python2-novaclient,python2-octaviaclient,python2-openstackclient,python2-openstacksdk,python2-os-client-config,python2-os-service-types,python2-osc-lib,python2-oslo-concurrency,python2-oslo-config,python2-oslo-context,python2-oslo-i18n,python2-oslo-log,python2-oslo-messaging,python2-oslo-middleware,python2-oslo-serialization,python2-oslo-service,python2-oslo-utils,python2-osprofiler,python2-pbr,python2-pyOpenSSL,python2-pyasn1,python2-pyparsing,python2-pyperclip,python2-qpid-proton,python2-requests,python2-requestsexceptions,python2-rfc3986,python2-six,python2-statsd,python2-stevedore,python2-swiftclient,python2-tenacity,python2-urllib3,python2-vine,python2-webob,python2-wrapt,python2-yappi,qpid-proton-c
+    priority=5
+    EOF
+  - yum-builddep -y *.spec
+  - yum -y update
+  - yum -y install wget
+  - wget https://cbs.centos.org/kojifiles/packages/python-cryptography/2.5/1.el7/x86_64/python2-cryptography-2.5-1.el7.x86_64.rpm
+  - yum install -y python2-cryptography-2.5-1.el7.x86_64.rpm
+  - wget https://cbs.centos.org/kojifiles/packages/python-pyasn1/0.3.7/6.el7/noarch/python2-pyasn1-0.3.7-6.el7.noarch.rpm
+  - yum install -y python2-pyasn1-0.3.7-6.el7.noarch.rpm
+  - yum install -y cci-tools
+  - yum install -y rpmdevtools
+  - yum install -y python-configparser
+  - yum install -y python2-mock
+
+
+flake8:
+  script:
+    - python3 setup.py test
+    - pip3 install tox flake8  # you can also use tox
+#    - tox -e py36,flake8
+    - flake8 *.py
+
+# unit_test:
+#     script:
+#       - python migration_cycle/test_migration_cycle.py
+
+
+RPM:
+   script:
+     - python3 setup.py bdist_rpm
+#     # an alternative approach is to install and run:
+#     - pip install dist/*
+#     # run the command here
+#   artifacts:
+#     paths:
+#       - dist/*.whl
+
+# pages:
+#   script:
+#     - pip install sphinx sphinx-rtd-theme
+#     - cd doc ; make html
+#     - mv build/html/ ../public/
+#   artifacts:
+#     paths:
+#       - public
+#   only:
+#     - master
