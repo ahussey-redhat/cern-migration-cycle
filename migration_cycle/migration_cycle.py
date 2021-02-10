@@ -853,20 +853,46 @@ def config_file_execution():
 
             # no_reboot
             try:
-                args.no_reboot = config[cell]['no_reboot'].lower()
+                no_reboot = config[cell]['no_reboot'].lower()
+                if no_reboot == 'true':
+                    args.no_reboot = True
+                elif no_reboot == 'false':
+                    args.no_reboot = False
+                else:
+                    msg = "no_reboot only supports true/false. {} provided"\
+                        .format(no_reboot)
+                    log_error_mail(logger, msg)
+                    sys.exit()
             except Exception:
                 args.no_reboot = False
 
             # no_compute_enable
             try:
-                args.no_compute_enable = config[cell]['no_compute_enable']\
-                                         .lower()
+                no_compute_enable = config[cell]['no_compute_enable'].lower()
+                if no_compute_enable == 'true':
+                    args.no_compute_enable = True
+                elif no_compute_enable == 'false':
+                    args.no_compute_enable = False
+                else:
+                    msg = "no_compute_enable only supports true/false"\
+                          " {} provided".format(no_compute_enable)
+                    log_error_mail(logger, msg)
+                    sys.exit()
             except Exception:
                 args.no_compute_enable = False
 
             # no_roger_enable
             try:
-                args.no_roger_enable = config[cell]['no_roger_enable'].lower()
+                no_roger_enable = config[cell]['no_roger_enable'].lower()
+                if no_roger_enable == 'true':
+                    args.no_roger_enable = True
+                elif no_roger_enable == 'false':
+                    args.no_roger_enable = False
+                else:
+                    msg = "no_roger_enable only supports true/false"\
+                          "{} provided".format(no_roger_enable)
+                    log_error_mail(logger, msg)
+                    sys.exit()
             except Exception:
                 args.no_roger_enable = False
 
