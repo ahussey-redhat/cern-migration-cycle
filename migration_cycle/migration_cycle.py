@@ -332,50 +332,40 @@ def setup_logger(name, log_file, level=logging.INFO):
     return logger
 
 
-def enable_disable_compute(nc, host, service_uuid, operation,
-                           exec_mode, logger):
-    # get uuid of the service
-    s_uuid = str(service_uuid)
-    # convert to string and replace unwanted char
-    s_uuid = s_uuid.replace('<Service: ', '')
-    s_uuid = s_uuid.replace('[', '')
-    s_uuid = s_uuid.replace('>]', '')
-    logger.info("[compute service uuid: {}]".format(s_uuid))
+def get_service_uuid(nova_client, compute_node, logger):
+    try:
+        service = nova_client.services.list(compute_node)
+    except Exception as e:
+        log_error_mail(logger, "[{}][failed to get service_uuid][{}]".format(compute_node, e))
+        raise e
 
-    if not exec_mode:
-        logger.info("[DRYRUN] execution mode")
-        if operation == "disable":
-            logger.info("[{}][DRYRUN][compute node disabled]".format(host))
-        elif operation == "enable":
-            logger.info("[{}][DRYRUN][compute host enabled]".format(host))
-        else:
-            logger.info("[Invalid operation]")
-            return False
-        return True
-    else:
-        # disable the service
-        # {u'status': u'disabled'}
-        if operation == "disable":
-            try:
-                reason = "[Migration Cycle] migrating all the instances and"\
-                    " rebooting the compute node"
-                nc.services.disable_log_reason(s_uuid, reason)
-                logger.info("[{}][compute node disabled]".format(host))
-                return True
-            except Exception as e:
-                logger.error("[{}][unable to disable compute][{}]".format(e, host))
-                return False
-        elif operation == "enable":
-            try:
-                nc.services.enable(s_uuid)
-                logger.info("[{}][compute host enabled]".format(host))
-                return True
-            except Exception as e:
-                logger.error("[{}][unable to enable compute] [{}]".format(e, host))
-                return False
-        else:
-            logger.error("[invalid operation]")
-            return False
+    service_uuid = str(service)
+    service_uuid = service_uuid.replace('<Service: ', '')
+    service_uuid = service_uuid.replace('[', '')
+    service_uuid = service_uuid.replace('>]', '')
+    logger.info("[compute service uuid: {}]".format(service_uuid))
+    return service_uuid
+
+
+def disable_compute_node(nova_client, compute_node, logger):
+    service_uuid = get_service_uuid(nova_client, compute_node, logger)
+    try:
+        disable_reason = "[Migration Cycle] DATE working in the node..."
+        nova_client.services.disable_log_reason(service_uuid, disable_reason)
+        logger.info("[{}][compute node disabled]".format(compute_node))
+    except Exception as e:
+        log_error_mail(logger, "[{}][failed to disable compute][{}]".format(e, host))
+        raise e
+
+
+def enable_compute_node(nova_client, compute_node, logger):
+    service_uuid = get_service_uuid(nova_client, compute_node, logger)
+    try:
+        nova_client.services.enable(service_uuid)
+        logger.info("[{}][compute node enabled]".format(compute_node))
+    except Exception as e:
+        log_error_mail(logger, "[{}][failed to enable compute][{}]".format(e, host))
+        raise e
 
 
 def enable_disable_alarm(host, operation, exec_mode, logger):
@@ -582,12 +572,9 @@ def host_migration(cloud, nc, host, logger, exec_mode, args):
         logger.info("[{}][skiping compute node]".format(host))
         return
 
-    # disable the compute node
-    if enable_disable_compute(
-            nc, host, service_uuid, 'disable', exec_mode, logger):
-        logger.info("[{}][disabled compute node]".format(host))
-    else:
-        logger.error("[{}][failed to disable compute node]".format(host))
+    try:
+        disable_compute_node(nc, host, logger)
+    except:
         logger.info("[{}][skiping node]".format(host))
         return
 
@@ -598,9 +585,13 @@ def host_migration(cloud, nc, host, logger, exec_mode, args):
     else:
         logger.error("[{}][failed to disable roger alarm]")
         # revert compute status(enable)
-        enable_disable_compute(
-                nc, host, service_uuid, 'enable', exec_mode, logger)
-        logger.info("[{}][revert - enabled compute node]".format(host))
+
+        try:
+            enable_compute_node(nc, host, logger)
+        except:
+            logger.info("[{}][skiping node]".format(host))
+            return
+
         logger.info("[{}][skiping node]".format(host))
         return
 
@@ -624,8 +615,10 @@ def host_migration(cloud, nc, host, logger, exec_mode, args):
         logger.info("[{}][compute service not enabled]".format(host))
     else:
         # enable the compute node
-        enable_disable_compute(nc, host, service_uuid, 'enable',
-                               exec_mode, logger)
+        try:
+            enable_compute_node(nc, host, logger)
+        except:
+            pass
 
     # do not enable roger alarm
     if args.no_roger_enable:
