@@ -4,7 +4,8 @@ import argparse
 import configparser
 import logging
 import os
-from ccitools.utils.cloud import CloudRegionClient ###<-
+from ccitools.utils.cloud import CloudRegionClient
+from ccitools.cmd.sendmail import SendmailCMD
 import subprocess
 import sys
 import time
@@ -25,6 +26,40 @@ THREAD_MANAGER = []
 MAX_TIMEOUT = 14400  # 4 hours
 SLEEP_TIME = 30
 INCREMENT = 0
+MAIL_RECEIPENTS = []
+INFO = 'info'
+WARNING = 'warning'
+ERROR = 'error'
+DEBUG = 'debug'
+
+
+def send_mail(mail_body):
+    mail_to = ','.join(MAIL_RECEIPENTS)
+    mail_subject = 'migration cycle service failed'
+    mail_from = 'noreply-migration-service@cern.ch'
+    smtp_server = 'localhost'
+    mail_cc = ''
+    mail_bcc = ''
+    sendmail = SendmailCMD()
+    sendmail.sendmail(mail_to=mail_to, mail_subject=mail_subject,
+                      mail_from=mail_from, smtp_server=smtp_server,
+                      sendmail=True, mail_cc=mail_cc, mail_bcc=mail_bcc,
+                      mail_content_type='', mail_body=mail_body)
+
+
+def log_event(logger, level, msg):
+    if level == 'info':
+        logger.info(msg)
+    elif level == 'warning':
+        logger.warning(msg)
+    elif level == 'debug':
+        logger.debug(msg)
+    elif level == 'error':
+        logger.error(msg)
+        if MAIL_RECEIPENTS:
+            send_mail(msg)
+    else:
+        logger.error("invalid log level provided.")
 
 NC_VERSION = 2.72
 
@@ -33,33 +68,37 @@ def live_migration(cloudclient, server, hypervisor, exec_mode, logger):
     start = time.time()
 
     if not exec_mode:
-        logger.info("[{}][instance-uuid {}]".format(server.name, server.id))
-        logger.info("[{}][DRYRUN][live migration][started]"
-                    .format(server.name))
+        log_event(logger, INFO,
+                  "[{}][instance-uuid {}]".format(server.name, server.id))
+        log_event(logger, INFO,
+                  "[{}][DRYRUN][live migration][started]".format(server.name))
         return True
-    logger.info("[{}][instance-uuid: {}]".format(server.name, server.id))
+    log_event(logger, INFO,
+              "[{}][instance-uuid: {}]".format(server.name, server.id))
     # check if volume is attached to an instance
     if server._info["image"]:
         # if image is attached that means not booted from volume
-        logger.info("[{}][booted from image]".format(server.name))
+        log_event(logger, INFO,
+                  "[{}][booted from image]".format(server.name))
         try:
             server.live_migrate(host=None, block_migration=True)
-            logger.info("[{}][live migration][started]"
-                        .format(server.name))
+            log_event(logger, INFO, "[{}][live migration][started]"
+                      .format(server.name))
         except Exception as e:
-            logger.error("[{}][error during block live migration][{}]"
-                         .format(server.name, e))
+            log_event(logger, ERROR,
+                      "[{}][error during block live migration][{}]"
+                      .format(server.name, e))
             return False
     else:
         # volume is attached set block migration to False
-        logger.info("[{}][booted from volume]".format(server.name))
+        log_event(logger, INFO, "[{}][booted from volume]".format(server.name))
         try:
             server.live_migrate(host=None, block_migration=False)
-            logger.info("[{}][live migration][started]"
-                        .format(server.name))
+            log_event(logger, INFO, "[{}][live migration][started]"
+                      .format(server.name))
         except Exception as e:
-            logger.error("[{}][error during live migration][{}]"
-                         .format(server.name, e))
+            log_event(logger, ERROR, "[{}][error during live migration][{}]"
+                      .format(server.name, e))
             return False
 
     INCREMENT = 0
@@ -73,16 +112,18 @@ def live_migration(cloudclient, server, hypervisor, exec_mode, logger):
         try:
             ins = cloudclient.get_server(server.id)
         except Exception as e:
-            logger.error("[{}][failed to get server instance][{}]"
-                         .format(server.name, e))
+            log_event(logger, ERROR,
+                      "[{}][failed to get server instance][{}]"
+                      .format(server.name, e))
             return False
         # get instance host
         ins_dict = ins.to_dict()
 
         # check ERROR state of VM
         if ins_dict['status'] == "ERROR":
-            logger.info("[{}][VM migration failed. VM now in ERROR state]"
-                        .format(server.name))
+            log_event(logger, INFO,
+                      "[{}][VM migration failed. VM now in ERROR state]"
+                      .format(server.name))
             return False
 
         # check if live migration cmd was even successful
@@ -90,24 +131,27 @@ def live_migration(cloudclient, server, hypervisor, exec_mode, logger):
             if hypervisor in  \
                 ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname'] \
                     and ins_dict['status'] == "ACTIVE":
-                logger.error("[{}][live migration failed]"
-                             .format(ins_dict['name']))
+                log_event(logger, ERROR, "[{}][live migration failed]"
+                          .format(ins_dict['name']))
                 return False
 
         # check if host and status has changed
         if hypervisor not in \
             ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname'] \
                 and ins_dict['status'] == "ACTIVE":
-            logger.info("[{}][migrated to New Host][{}]".format(
-                        server.name,
-                        ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname']))
-            logger.info("[{}][state][{}]"
-                        .format(server.name, ins_dict['status']))
-            logger.info("[{}][live migration duration][{}]"
-                        .format(server.name,
-                                round(time.time() - start, 2)))
-            logger.info("[{}][live migration][finished]"
-                        .format(ins_dict['name']))
+            log_event(logger, INFO,
+                      "[{}][migrated to New Host][{}]".format(
+                          server.name,
+                          ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname']))
+            log_event(logger, INFO,
+                      "[{}][state][{}]"
+                      .format(server.name, ins_dict['status']))
+            log_event(logger, INFO,
+                      "[{}][live migration duration][{}]"
+                      .format(server.name, round(time.time() - start, 2)))
+            log_event(logger, INFO,
+                      "[{}][live migration][finished]"
+                      .format(ins_dict['name']))
             return True
     return False
 
@@ -117,21 +161,22 @@ def cold_migration(cloudclient, server, hypervisor, exec_mode, logger):
     start = time.time()
 
     if not exec_mode:
-        logger.info("[{}] id {}".format(server.name, server.id))
-        logger.info("[{}][DRYRUN][cold migration][started]"
-                    .format(server.name))
+        log_event(logger, INFO, "[{}] id {}".format(server.name, server.id))
+        log_event(logger, INFO, "[{}][DRYRUN][cold migration][started]"
+                  .format(server.name))
         return True
-
-    logger.info("[{}] id {}".format(server.name, server.id))
-    logger.info("[{}][cold migration][started]".format(server.name))
+    log_event(logger, INFO, "[{}] id {}".format(server.name, server.id))
+    log_event(logger, INFO,
+              "[{}][cold migration][started]".format(server.name))
     try:
         server.migrate()
-        logger.info("[{}][VM migration executed][wait for VM state change]"
-                    .format(server.name))
+        log_event(logger, INFO,
+                  "[{}][VM migration executed][wait for VM state change]"
+                  .format(server.name))
         time.sleep(SLEEP_TIME)
     except Exception as e:
-        logger.error("[{}][error during cold migration][{}]"
-                     .format(server.name, e))
+        log_event(logger, ERROR, "[{}][error during cold migration][{}]"
+                  .format(server.name, e))
         return False
 
     # cold migration checks
@@ -146,20 +191,20 @@ def cold_migration(cloudclient, server, hypervisor, exec_mode, logger):
             ins = cloudclient.get_server(server.id)
             ins_dict = ins.to_dict()
         except Exception as e:
-            logger.error("[{}][failed to get server instance][{}]"
-                         .format(ins_dict['name'], e))
+            log_event(logger, ERROR, "[{}][failed to get server instance][{}]"
+                      .format(ins_dict['name'], e))
             return False
 
         # check if the state has changed to Error
         if ins_dict['status'] == "ERROR":
-            logger.info("[{}][cold migration cmd failed]"
-                        .format(ins_dict['name']))
+            log_event(logger, INFO, "[{}][cold migration cmd failed]"
+                      .format(ins_dict['name']))
             return False
 
         if ins_dict["OS-EXT-STS:task_state"] is None \
                 and ins_dict['status'] == "SHUTOFF":
-            logger.error("[{}][server migrate cmd failed]"
-                         .format(ins_dict['name']))
+            log_event(logger, ERROR, "[{}][server migrate cmd failed]"
+                      .format(ins_dict['name']))
             return False
 
         # next wait for RESIZE to VERIFY_RESIZE
@@ -180,8 +225,9 @@ def cold_migration(cloudclient, server, hypervisor, exec_mode, logger):
         try:
             ins.confirm_resize()
         except Exception as e:
-            logger.error("[{}][confirm resize operation failed][{}]"
-                         .format(ins.name, e))
+            log_event(logger, ERROR,
+                      "[{}][confirm resize operation failed][{}]"
+                      .format(ins.name, e))
             return False
 
     # sleep & wait for change
@@ -191,23 +237,26 @@ def cold_migration(cloudclient, server, hypervisor, exec_mode, logger):
         ins = cloudclient.get_server(server.id)
         ins_dict = ins.to_dict()
     except Exception as e:
-        logger.error("[{}][failed to get server instance][{}]"
-                     .format(ins_dict['name'], e))
+        log_event(logger, ERROR, "[{}][failed to get server instance][{}]"
+                  .format(ins_dict['name'], e))
         return False
     # Check if host has changed & VM state is back to SHUTOFF or ACTIVE
     if hypervisor not in \
         ins_dict["OS-EXT-SRV-ATTR:hypervisor_hostname"] \
             and (ins_dict['status'] == "SHUTOFF" or
                  ins_dict['status'] == "ACTIVE"):
-        logger.info("[{}][status][{}]"
-                    .format(server.name, ins_dict['status']))
-        logger.info("[{}][migrated to compute node][{}]"
-                    .format(server.name, ins_dict[
+        log_event(logger, INFO, "[{}][status][{}]"
+                  .format(server.name, ins_dict['status']))
+
+        log_event(logger, INFO, "[{}][migrated to compute node][{}]"
+                  .format(server.name, ins_dict[
                             'OS-EXT-SRV-ATTR:hypervisor_hostname']))
-        logger.info("[{}][migration duration][{}]"
-                    .format(server.name, round(time.time() - start, 2)))
-        logger.info("[{}][cold migration][finished]"
-                    .format(ins_dict['name']))
+
+        log_event(logger, INFO, "[{}][migration duration][{}]"
+                  .format(server.name, round(time.time() - start, 2)))
+
+        log_event(logger, INFO, "[{}][cold migration][finished]"
+                  .format(ins_dict['name']))
         return True
     return False
 
@@ -239,7 +288,7 @@ def is_compute_node_empty(cloud, logger, compute_node):
 
 def empty_hv(cloudclient, hypervisor, exec_mode, logger):
     if not exec_mode:
-        logger.info("[{}][DRYRUN][NO VMs]".format(hypervisor))
+        log_event(logger, INFO, "[{}][DRYRUN][NO VMs]".format(hypervisor))
         return True
     # List of servers
     try:
@@ -252,17 +301,20 @@ def empty_hv(cloudclient, hypervisor, exec_mode, logger):
                 servers_name.append(server.name)
                 servers_set.append(server)
     except Exception as e:
-        logger.error("[{}][error in retrieving servers from compute node][{}]"
-                     .format(hypervisor, e))
+        log_event(logger, ERROR,
+                  "[{}][error in retrieving servers from compute node][{}]"
+                  .format(hypervisor, e))
         return True
 
     if servers:
-        logger.info("[{}][VMs] {}".format(hypervisor, servers_name)) ###<-
+        log_event(logger, INFO,
+                  "[{}][VMs] {}".format(hypervisor, servers_name))
         return False
     else:
-        logger.info(
-            "[{}][post migration checks no VMs found]".format(hypervisor))
-        logger.info("[{}][Hypervisor is empty]".format(hypervisor))
+        log_event(logger, INFO,
+                  "[{}][post migration checks no VMs found]"
+                  .format(hypervisor))
+        log_event(logger, INFO, "[{}][Hypervisor is empty]".format(hypervisor))
         return True
 
 
@@ -278,8 +330,9 @@ def vm_list(cloudclient, hypervisor, exec_mode, logger):
                 servers_name.append(server.name)
                 servers_set.append(server)
     except Exception as e:
-        logger.error("[{}][error retrieving VMs from compute node][{}]"
-                     .format(hypervisor, e))
+        log_event(logger, ERROR,
+                  "[{}][error retrieving VMs from compute node][{}]"
+                  .format(hypervisor, e))
     return servers_set, servers_name
 
 
@@ -287,7 +340,7 @@ def vms_migration(cloudclient, hypervisor, exec_mode, logger):
     # List of servers
     servers_set, servers_name = vm_list(cloudclient, hypervisor, exec_mode,
                                         logger)
-    logger.info("[{}][VMs] {}".format(hypervisor, servers_name)) ###<-
+    log_event(logger, INFO, "[{}][VMs] {}".format(hypervisor, servers_name))
 
     # get total servers
     server_count = len(servers_set)
@@ -296,24 +349,27 @@ def vms_migration(cloudclient, hypervisor, exec_mode, logger):
         for server in servers_set:
             # progress meter
             progress += 1
-            logger.info("[working on {}. ({}/{}) VM]"
-                        .format(server.name, progress, server_count))
+            log_event(logger, INFO, "[working on {}. ({}/{}) VM]"
+                      .format(server.name, progress, server_count))
             # get updated VM state each time
             # because migration takes time and
             # other VM state might change in mean time
             try:
                 u_server = cloudclient.get_server(server.id)
             except Exception as e:
-                logger.error("[{}][error getting compute node instance][{}]" ###<-
-                             .format(server, e))
-                logger.error("[{}][Not migrating the node instances][{}]") ###<-
+                log_event(logger, ERROR,
+                          "[{}][error getting compute node instance][{}]"
+                          .format(server, e))
+                log_event(logger, ERROR,
+                          "[{}][Not migrating the node instances][{}]")
                 return
             # check if server still exists
             if u_server is None:
-                logger.error("[%s][no longer exists/found]", server.name)
+                log_event(logger, ERROR,
+                          "[%s][no longer exists/found]", server.name)
                 continue
-            logger.info("[{}][state][{}]"
-                        .format(u_server.name, u_server.status))
+            log_event(logger, INFO, "[{}][state][{}]"
+                      .format(u_server.name, u_server.status))
 
             # convert server obj to dict to get task state
             server_dict = u_server.to_dict()
@@ -333,18 +389,20 @@ def vms_migration(cloudclient, hypervisor, exec_mode, logger):
                                          exec_mode,
                                          logger)
                 else:
-                    logger.info("[%s][failed to migrate] \
+                    log_event(logger, INFO, "[%s][failed to migrate] \
                     [not in ACTIVE or SHUTOFF status]", u_server.name)
                     res = False
                 # store result if false break
                 if not res:
-                    logger.info("[%s][migration failed]",
-                                u_server.name)
+                    log_event(logger, INFO, "[%s][migration failed]",
+                              u_server.name)
             else:
-                logger.warning("[%s][can't be migrated because task state not NONE]", u_server.name)
+                log_event(logger, WARNING,
+                          "[%s][can't be migrated. task state not NONE]",
+                          u_server.name)
     else:
-        logger.info(
-            "[{}][NO VMs in the compute node]".format(hypervisor))
+        log_event(logger, INFO,
+                  "[{}][NO VMs in the compute node]".format(hypervisor))
 
 
 def setup_logger(name, log_file, level=logging.INFO):
@@ -366,14 +424,16 @@ def get_service_uuid(nova_client, compute_node, logger):
     try:
         service = nova_client.services.list(compute_node)
     except Exception as e:
-        log_error_mail(logger, "[{}][failed to get service_uuid][{}]".format(compute_node, e))
+        log_event(logger, ERROR,
+                  "[{}][failed to get service_uuid][{}]"
+                  .format(compute_node, e))
         raise e
 
     service_uuid = str(service)
     service_uuid = service_uuid.replace('<Service: ', '')
     service_uuid = service_uuid.replace('[', '')
     service_uuid = service_uuid.replace('>]', '')
-    logger.info("[compute service uuid: {}]".format(service_uuid))
+    log_event(logger, INFO, "[compute service uuid: {}]".format(service_uuid))
     return service_uuid
 
 
@@ -382,9 +442,12 @@ def disable_compute_node(nova_client, compute_node, logger):
     try:
         disable_reason = "[Migration Cycle] DATE working in the node..."
         nova_client.services.disable_log_reason(service_uuid, disable_reason)
-        logger.info("[{}][compute node disabled]".format(compute_node))
+        log_event(logger, INFO,
+                  "[{}][compute node disabled]".format(compute_node))
     except Exception as e:
-        log_error_mail(logger, "[{}][failed to disable compute][{}]".format(e, host))
+        log_event(logger, ERROR,
+                  "[{}][failed to disable compute][{}]"
+                  .format(e, compute_node))
         raise e
 
 
@@ -392,15 +455,19 @@ def enable_compute_node(nova_client, compute_node, logger):
     service_uuid = get_service_uuid(nova_client, compute_node, logger)
     try:
         nova_client.services.enable(service_uuid)
-        logger.info("[{}][compute node enabled]".format(compute_node))
+        log_event(logger, INFO,
+                  "[{}][compute node enabled]".format(compute_node))
     except Exception as e:
-        log_error_mail(logger, "[{}][failed to enable compute][{}]".format(e, host))
+        log_event(logger, ERROR,
+                  "[{}][failed to enable compute][{}]"
+                  .format(e, compute_node))
         raise e
 
 
 def enable_disable_alarm(host, operation, exec_mode, logger):
     if not exec_mode:
-        logger.info("[{}] [DRYRUN] [roger alarm {}]".format(host, operation))
+        log_event(logger, INFO,
+                  "[{}] [DRYRUN] [roger alarm {}]".format(host, operation))
         return True
     else:
         cmd = "roger update " + host + " --all_alarms " + operation
@@ -414,7 +481,7 @@ def enable_disable_alarm(host, operation, exec_mode, logger):
 
 def ai_reboot_host(host, exec_mode, logger):
     if not exec_mode:
-        logger.info("[{}][DRYRUN][rebooted]".format(host))
+        log_event(logger, INFO, "[{}][DRYRUN][rebooted]".format(host))
         return True
     else:
         cmd = "ai-remote-power-control cycle " + host
@@ -429,17 +496,18 @@ def ai_reboot_host(host, exec_mode, logger):
 def ssh_reboot(host, exec_mode, logger):
     # ssh into host and send reboot command
     if not exec_mode:
-        logger.info("[{}][DRYRUN][reboot via SSH success]"
-                    .format(host))
+        log_event(logger, INFO, "[{}][DRYRUN][reboot via SSH success]"
+                  .format(host))
         return True
     try:
         output, error = ssh_executor(host, "reboot")
     except Exception as e:
-        logger.error("[{}][failed to ssh and reboot][{}]".format(host, e))
+        log_event(logger, ERROR,
+                  "[{}][failed to ssh and reboot][{}]".format(host, e))
         return False
 
     if error:
-        logger.error("[{}][failed to ssh and reboot]".format(host))
+        log_event(logger, ERROR, "[{}][failed to ssh and reboot]".format(host))
         return False
 
     return True
@@ -449,16 +517,19 @@ def hv_post_reboot_checks(old_uptime, host, exec_mode, logger):
     result = False
     sleep_interval = 60
     if not exec_mode:
-        logger.info("[{}][DRYRUN][reboot success]".format(host))
+        log_event(logger, INFO, "[{}][DRYRUN][reboot success]".format(host))
         return True
     else:
         counter = 0
         while counter <= 30:
             new_uptime = ssh_uptime([host], logger)
             if bool(new_uptime):
-                logger.info("[{}][new uptime][{}]".format(host,new_uptime[host])) ###<-
+                log_event(logger, INFO,
+                          "[{}][new uptime][{}]"
+                          .format(host, new_uptime[host]))
                 if(float(old_uptime[host]) > float(new_uptime[host])):
-                    logger.info("[{}][reboot success]".format(host))
+                    log_event(logger, INFO,
+                              "[{}][reboot success]".format(host))
                     result = True
                     break
             counter = counter + 1
@@ -476,7 +547,9 @@ def get_ironic_node(nc, host, exec_mode, logger):
     try:
         ironic_server = (nc.servers.list(search_opts=search_opts))[0]
     except Exception:
-        logger.info("[{}][compute node {} is NOT an ironic node]".format(host, host))
+        log_event(logger, INFO,
+                  "[{}][compute node {} is NOT an ironic node]"
+                  .format(host, host))
         ironic_server = None
     return ironic_server
 
@@ -494,8 +567,8 @@ def ironic_check(nc, host, exec_mode, logger):
 
 def reboot_ironic(nc, host, exec_mode, reboot_type, logger):
     if not exec_mode:
-        logger.info("[DRYRUN][{}][ironic reboot success]"
-                    .format(host))
+        log_event(logger, INFO, "[DRYRUN][{}][ironic reboot success]"
+                  .format(host))
         return True
     try:
         node = host
@@ -504,9 +577,8 @@ def reboot_ironic(nc, host, exec_mode, reboot_type, logger):
         node.reboot(reboot_type=reboot_type)
         return True
     except Exception as e:
-        logger.error("[{}][failed to reboot ironic server] [{}]"
-                     .format(host, e))
-
+        log_event(logger, ERROR, "[{}][failed to reboot ironic server] [{}]"
+                  .format(host, e))
     return False
 
 
@@ -518,46 +590,47 @@ def cell_migration(region, cloud, nc, hosts, cell_name, logger, exec_mode, args)
         hosts_dict = ssh_uptime(hosts, logger)
         # sort the hypervisors based on their uptime
         hosts = create_sorted_uptime_hosts(hosts_dict)
-        logger.info("[{}][cell nodes sorted by uptime{}]"
-                    .format(cell_name, hosts))
+        log_event(logger, INFO, "[{}][cell nodes sorted by uptime{}]"
+                  .format(cell_name, hosts))
 
         host = hosts.pop()
         count += 1
-        logger.info("[working on compute node [{}]. ({}/{})]"
-                    .format(host, count, cell_host_count))
-
-        host_migration(region, cloud, nc, host, logger, exec_mode, args)
+        log_event(logger, INFO, "[working on compute node [{}]. ({}/{})]"
+                  .format(host, count, cell_host_count))
+        host_migration(cloud, nc, host, logger, exec_mode, args)
 
 
 def reboot_manager(cloud, nc, host, logger, exec_mode, args):
     # we need list for ssh_uptime
     # get uptime and store it
     old_uptime = ssh_uptime([host], logger)
-    logger.debug("[{}][old uptime] [{}]".format(host, old_uptime[host]))
+    log_event(logger, DEBUG,
+              "[{}][old uptime] [{}]".format(host, old_uptime[host]))
 
     # check if the HV is ironic managed
     ironic_node = get_ironic_node(nc, host, exec_mode, logger)
     if ironic_node:
         # first try reboot by doing SSH
         if ssh_reboot(host, exec_mode, logger):
-            logger.info("[{}][ironic node reboot via SSH success]"
-                        .format(host))
+            log_event(logger, INFO, "[{}][ironic node reboot via SSH success]"
+                      .format(host))
         elif reboot_ironic(nc, ironic_node, exec_mode, 'SOFT', logger):
             # ironic managed soft reboot
-            logger.info("[{}][soft reboot success]".format(host))
+            log_event(logger, INFO, "[{}][soft reboot success]".format(host))
         elif reboot_ironic(nc, ironic_node, exec_mode, 'HARD', logger):
             # ironic managed hard reboot
-            logger.info("[{}][hard reboot cmd success]".format(host))
+            log_event(logger, INFO, "[{}][hard reboot cmd success]"
+                      .format(host))
         else:
-            logger.info("[{}][reboot cmd failed]".format(host))
+            log_event(logger, INFO, "[{}][reboot cmd failed]".format(host))
 
         # hypervisor post reboot checks
         if hv_post_reboot_checks(old_uptime, host, exec_mode, logger):
-            logger.info("[{}]".format(host) +
-                        "[ironic migration and reboot operation success]")
+            log_event(logger, INFO, "[{}]".format(host) +
+                      "[ironic migration and reboot operation success]")
         else:
-            logger.info("[{}]".format(host) +
-                        "[ironic migration and reboot operation failed]")
+            log_event(logger, INFO, "[{}]".format(host) +
+                      "[ironic migration and reboot operation failed]")
 
     # Not managed by Ironic
     else:
@@ -566,24 +639,26 @@ def reboot_manager(cloud, nc, host, logger, exec_mode, args):
         if ssh_reboot(host, exec_mode, logger):
             # hv post reboot confirmation checks
             if hv_post_reboot_checks(old_uptime, host, exec_mode, logger):
-                logger.info("[{}][reboot via SSH success]"
-                            .format(host))
-                logger.info("[{}] ".format(host) +
-                            "[migration and reboot operation " +
-                            "successful]") ###<-
+                log_event(logger, INFO, "[{}][reboot via SSH success]"
+                          .format(host))
+                log_event(logger, INFO, "[{}] ".format(host) +
+                          "[migration and reboot operation " +
+                          "successful]")
             else:
                 ai_reboot = True
         # if ssh_reboot failed Try with ai-power-control
         if ai_reboot:
             if ai_reboot_host(host, exec_mode, logger):
-                logger.info("[{}][reboot cmd success]".format(host))
+                log_event(logger, INFO,
+                          "[{}][reboot cmd success]".format(host))
                 # hv post reboot confirmation checks
                 if hv_post_reboot_checks(old_uptime, host, exec_mode, logger):
-                    logger.info("[{}]".format(host) +
-                                "[migration and reboot operation " +
-                                "successful]") ###<-
+                    log_event(logger, INFO, "[{}]".format(host) +
+                              "[migration and reboot operation " +
+                              "successful]")
             else:
-                logger.error("[{}][reboot cmd failed]".format(host))
+                log_event(logger, ERROR,
+                          "[{}][reboot cmd failed]".format(host))
 
 
 def host_migration(region, cloud, nc, host, logger, exec_mode, args):
@@ -597,32 +672,31 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
     match = nc.hypervisors.search(host, servers=False, detailed=False)
     hv = match[0]
     if hv.state != "up" and hv.status != "enabled":
-        logger.error("[{}][compute node is not UP and enabled]"
-                     .format(host))
-        logger.info("[{}][skiping compute node]".format(host))
+        log_event(logger, ERROR, "[{}][compute node is not UP and enabled]"
+                  .format(host))
+        log_event(logger, INFO, "[{}][skiping compute node]".format(host))
         return
 
     try:
         disable_compute_node(nc, host, logger)
     except:
-        logger.info("[{}][skiping node]".format(host))
+        log_event(logger, INFO, "[{}][skiping node]".format(host))
         return
 
     # change GNI alarm status via Roger
     # disable alarm
     if enable_disable_alarm(host, "false", exec_mode, logger):
-        logger.info("[{}][roger alarm disabled]".format(host))
+        log_event(logger, INFO, "[{}][roger alarm disabled]".format(host))
     else:
-        logger.error("[{}][failed to disable roger alarm]")
+        log_event(logger, ERROR, "[{}][failed to disable roger alarm]")
         # revert compute status(enable)
-
         try:
             enable_compute_node(nc, host, logger)
         except:
-            logger.info("[{}][skiping node]".format(host))
+            log_event(logger, INFO, "[{}][skiping node]".format(host))
             return
 
-        logger.info("[{}][skiping node]".format(host))
+        log_event(logger, INFO, "[{}][skiping node]".format(host))
         return
 
     vms_migration(cloud, host, exec_mode, logger)
@@ -632,17 +706,22 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
     if is_compute_node_empty(region, logger, host):
         # skip reboot if no_reboot is TRUE
         if args.no_reboot:
-            logger.info("[{}][no_reboot option provided]".format(host))
-            logger.info("[{}][skip reboot]".format(host))
+            log_event(logger, INFO,
+                      "[{}][no_reboot option provided]".format(host))
+            log_event(logger, INFO, "[{}][skip reboot]".format(host))
         else:
             reboot_manager(cloud, nc, host, logger, exec_mode, args)
     else:
-        logger.info("[{}][compute node still has VMs. Can't reboot]".format(host))
+        log_event(logger, INFO,
+                  "[{}][compute node still has VMs. Can't reboot]"
+                  .format(host))
 
     # do not enable compute service
     if args.no_compute_enable:
-        logger.info("[{}][no_compute_enable option provided]".format(host))
-        logger.info("[{}][compute service not enabled]".format(host))
+        log_event(logger, INFO,
+                  "[{}][no_compute_enable option provided]".format(host))
+        log_event(logger, INFO,
+                  "[{}][compute service not enabled]".format(host))
     else:
         # enable the compute node
         try:
@@ -652,13 +731,14 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
 
     # do not enable roger alarm
     if args.no_roger_enable:
-        logger.info("[{}][no_roger_enable option provided]".format(host))
-        logger.info("[{}][roger alarm not enabled]".format(host))
+        log_event(logger, INFO,
+                  "[{}][no_roger_enable option provided]".format(host))
+        log_event(logger, INFO, "[{}][roger alarm not enabled]".format(host))
     else:
         # change GNI alarm status via Roger
         # enable alarm
         if enable_disable_alarm(host, "true", exec_mode, logger):
-            logger.info("[{}][alarm enabled]".format(host))
+            log_event(logger, INFO, "[{}][alarm enabled]".format(host))
 
 
 def create_sorted_uptime_hosts(uptime_dict):
@@ -679,21 +759,28 @@ def ssh_uptime(hosts, logger):
         try:
             # SSH and get uptime
             output, error = ssh_executor(host, "cat /proc/uptime")
-            logger.info("[connecting to {} to get uptime]".format(host))
+            log_event(logger, INFO,
+                      "[connecting to {} to get uptime]".format(host))
             if error:
-                logger.error("[{}] Error executing command {}".format(hosts, error))
+                log_event(logger, ERROR,
+                          "[{}] Error executing command {}"
+                          .format(hosts, error))
             # Map uptime to host
             if output:
                 uptime = str(output[0])
                 uptime = uptime.split(' ')
-                logger.info("[{}][compute node uptime: {}]".format(host, uptime[0]))
+                log_event(logger, INFO,
+                          "[{}][compute node uptime: {}]"
+                          .format(host, uptime[0]))
                 uptime_dict[host] = float(uptime[0])
             # skip the host if unable to ssh
             else:
                 continue
 
         except Exception:
-            logger.info("[{}][trying to connect to {} after reboot]".format(host, host))
+            log_event(logger, INFO,
+                      "[{}][trying to connect to {} after reboot]"
+                      .format(host, host))
     # sort the dict and create list
     return uptime_dict
 
@@ -753,7 +840,7 @@ def make_nova_client(cloud, logger):
                                 session=cloud.session,
                                 region_name='cern')
     except Exception as e:
-        logger.info("[unable to create novaclient. {}]".format)
+        log_event(logger, INFO, "[unable to create novaclient. {}]".format)
         sys.exit(e)
     return nc
 
@@ -789,6 +876,15 @@ def config_file_execution():
 
     # get execution mode
     exec_mode = config['DEFAULT']['dryrun'].lower()
+
+    # get mailing receipents
+    try:
+        mail_list = config['DEFAULT']['mail_list']
+        global MAIL_RECEIPENTS
+        MAIL_RECEIPENTS = mail_list.split(',')
+        MAIL_RECEIPENTS = [m.strip() for m in MAIL_RECEIPENTS]
+    except Exception:
+        MAIL_RECEIPENTS = []
 
     # dryrun mode
     if exec_mode == 'true':
@@ -827,7 +923,8 @@ def config_file_execution():
                 included_nodes = config[cell]['include_nodes']
                 included_nodes = included_nodes.split(',')
             except Exception:
-                logger.info("include_nodes not defined in conf. Use default")
+                log_event(logger, INFO,
+                          "include_nodes not defined in conf. Use default")
                 included_nodes = [u'']
 
             # get nodes that need to be excluded
@@ -835,7 +932,8 @@ def config_file_execution():
                 excluded_nodes = config[cell]['exclude_nodes']
                 excluded_nodes = excluded_nodes.split(',')
             except Exception:
-                logger.info("exclude_nodes not defined in conf. Use default")
+                log_event(logger, INFO,
+                          "exclude_nodes not defined in conf. Use default")
                 excluded_nodes = [u'']
 
             # remove any whitespace
@@ -852,8 +950,9 @@ def config_file_execution():
             try:
                 result = nc.aggregates.find(name=config[cell]['name'])
             except Exception as e:
-                logger.error("[Unable to find {} to aggregate] [{}]"
-                             .format(config[cell]['name'], e))
+                log_event(logger, ERROR,
+                          "[Unable to find {} to aggregate] [{}]"
+                          .format(config[cell]['name'], e))
                 continue
 
             # create hv_list
