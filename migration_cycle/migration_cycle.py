@@ -4,13 +4,17 @@ import argparse
 import configparser
 import logging
 import os
-from ccitools.utils.cloud import CloudRegionClient
+from ccitools.utils.cloud import CloudRegionClient ###<-
 import subprocess
 import sys
 import time
 import threading
-from ccitools.common import ssh_executor
+from ccitools.common import ssh_executor ###<-
 from novaclient import client as nova_client
+
+from keystoneauth1 import session as keystone_session
+from os_client_config import config as cloud_config
+
 
 # configure logging
 logging.basicConfig(level=logging.INFO,
@@ -22,6 +26,7 @@ MAX_TIMEOUT = 14400  # 4 hours
 SLEEP_TIME = 30
 INCREMENT = 0
 
+NC_VERSION = 2.72
 
 def live_migration(cloudclient, server, hypervisor, exec_mode, logger):
     # start time
@@ -725,6 +730,30 @@ def make_nova_client(cloud, logger):
     except Exception as e:
         logger.info("[unable to create novaclient. {}]".format)
         sys.exit(e)
+    return nc
+
+
+def init_nova_client(cloud, logger):
+    def get_session(cloud, namespace=None):
+        try:
+            cloud_cfg = cloud_config.OpenStackConfig()
+        except (IOError, OSError) as e:
+            logger.critical("[can't read clouds.yaml configuration file]")
+            raise e
+
+        cloud_obj = cloud_cfg.get_one_cloud(
+            cloud=cloud,
+            argparse=namespace)
+        return keystone_session.Session(auth=cloud_obj.get_auth())
+
+    session = get_session(cloud=cloud)
+
+    try:
+        nc = nova_client.Client(version=NC_VERSION, session=session)
+    except Exception as e:
+        logger.critical("[can't create novaclient]")
+        raise e
+
     return nc
 
 
