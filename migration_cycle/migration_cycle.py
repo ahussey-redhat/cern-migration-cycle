@@ -63,6 +63,18 @@ def log_event(logger, level, msg):
         logger.error("invalid log level provided.")
 
 
+
+def ping_instance(hostname, logger):
+    ''' ping instances and logs. IP or hostname accepted'''
+    command = ['ping', '-c', '1', hostname]
+    if subprocess.call(command) == 0:
+        logger.info("[{} is alive]".format(hostname))
+        return True
+    else:
+        logger.info("[{} is unreachable]".format(hostname))
+        return False
+
+
 def live_migration(cloudclient, server, hypervisor, exec_mode, logger):
     # start time
     start = time.time()
@@ -118,6 +130,9 @@ def live_migration(cloudclient, server, hypervisor, exec_mode, logger):
             return False
         # get instance host
         ins_dict = ins.to_dict()
+
+        # ping instance during the whole duration of migration
+        ping_instance(server.name, logger)
 
         # check ERROR state of VM
         if ins_dict['status'] == "ERROR":
@@ -377,11 +392,20 @@ def vms_migration(cloudclient, hypervisor, exec_mode, logger):
             # check task state
             if server_dict["OS-EXT-STS:task_state"] is None:
                 if u_server.status == "ACTIVE":
+                    # ping before live migration starts
+                    ping_instance(u_server.name, logger)
                     res = live_migration(cloudclient,
                                          u_server,
                                          hypervisor,
                                          exec_mode,
                                          logger)
+                    # ping instance after migration success
+                    if res:
+                        ping_result = ping_instance(u_server.name, logger)
+                        if not ping_result:
+                            logger.warning("[{}][unable to ping after "
+                                           "migration]"
+                                           .format(u_server.name))
                 elif u_server.status == "SHUTOFF":
                     # do cold migration
                     res = cold_migration(cloudclient,
