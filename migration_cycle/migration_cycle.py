@@ -211,6 +211,31 @@ def cold_migration(cloudclient, server, hypervisor, exec_mode, logger):
         return True
     return False
 
+def get_instances(cloud, logger, compute_node):
+    """Returns the list of instances hosted in a compute_node"""
+
+    nc = init_nova_client(cloud, logger)
+    search_opts = {'all_tenants': True,
+                   'host': compute_node}
+    try:
+        instances = nc.servers.list(search_opts=search_opts)
+    except Exception as e:
+        logger.error("[{}][error in retrieving instances from compute node][{}]"
+                     .format(compute_node, e))
+        raise e
+    return instances
+
+
+def is_compute_node_empty(cloud, logger, compute_node):
+    """Returns True if there are no instances hosted in a compute_node"""
+
+    instances = get_instances(cloud, compute_node, logger)
+    if instances:
+        logger.info("[{}][compute node is NOT empty]".format(compute_node))
+        return False
+    logger.info("[{}][compute node is empty]".format(compute_node))
+    return True
+
 
 def empty_hv(cloudclient, hypervisor, exec_mode, logger):
     if not exec_mode:
@@ -485,7 +510,7 @@ def reboot_ironic(nc, host, exec_mode, reboot_type, logger):
     return False
 
 
-def cell_migration(cloud, nc, hosts, cell_name, logger, exec_mode, args):
+def cell_migration(region, cloud, nc, hosts, cell_name, logger, exec_mode, args):
     count = 0
     cell_host_count = len(hosts)
     while hosts:
@@ -501,7 +526,7 @@ def cell_migration(cloud, nc, hosts, cell_name, logger, exec_mode, args):
         logger.info("[working on compute node [{}]. ({}/{})]"
                     .format(host, count, cell_host_count))
 
-        host_migration(cloud, nc, host, logger, exec_mode, args)
+        host_migration(region, cloud, nc, host, logger, exec_mode, args)
 
 
 def reboot_manager(cloud, nc, host, logger, exec_mode, args):
@@ -561,7 +586,7 @@ def reboot_manager(cloud, nc, host, logger, exec_mode, args):
                 logger.error("[{}][reboot cmd failed]".format(host))
 
 
-def host_migration(cloud, nc, host, logger, exec_mode, args):
+def host_migration(region, cloud, nc, host, logger, exec_mode, args):
 
     # get compute service uuid
     service_uuid = nc.services.list(host)
@@ -604,7 +629,7 @@ def host_migration(cloud, nc, host, logger, exec_mode, args):
 
     # check if migration was successful
     # if there are still vms left don't reboot
-    if empty_hv(cloud, host, exec_mode, logger):
+    if is_compute_node_empty(region, logger, host):
         # skip reboot if no_reboot is TRUE
         if args.no_reboot:
             logger.info("[{}][no_reboot option provided]".format(host))
@@ -775,6 +800,8 @@ def config_file_execution():
         print('The configuration value for dryrun is not correctly ' +
               ' defined. Use true/false')
 
+    region = 'cern'
+
     # IF True keep on running the service
     cycle = config['DEFAULT']['cycle'].lower()
     if cycle == 'true':
@@ -855,9 +882,17 @@ def config_file_execution():
             except Exception:
                 args.no_roger_enable = False
 
+            # region
+            # TODO: to be replaced by cloud whe all code is refactored
+            try:
+                region = config[cell]['region'].lower()
+            except Exception:
+                logger.info("region not defined. Using the default 'cern'")
+
+
             # perform migration operation
             thread = threading.Thread(target=cell_migration,
-                                      args=(cloud, nc, hv_list,
+                                      args=(region, cloud, nc, hv_list,
                                             config[cell]['name'],
                                             logger, exec_mode, args))
             thread.start()
@@ -877,6 +912,9 @@ def cli_execution(args):
     behaviour = parser.add_mutually_exclusive_group()
     behaviour.add_argument('--perform', dest='exec_mode', action='store_true',)
     behaviour.add_argument('--dryrun', dest='exec_mode', action='store_false',)
+
+    parser.add_argument('--cloud', dest='cloud', default='cern',
+                        help='cloud in clouds.yaml for the compute nodes')
 
     parser.add_argument('--hosts', dest='hosts', required=True,
                         help='select the hosts to empty')
@@ -903,6 +941,8 @@ def cli_execution(args):
     args = parser.parse_args()
 
     for host in args.hosts.split():
+        region = args.cloud
+
         # create logger
         logfile_name = '/var/log/migration_cycle/' + host + '.log'
         logger = setup_logger(host, logfile_name)
@@ -912,7 +952,7 @@ def cli_execution(args):
 
         # make nova client
         nc = make_nova_client(cloud, logger)
-        host_migration(cloud, nc, host, logger, args.exec_mode, args)
+        host_migration(region, cloud, nc, host, logger, args.exec_mode, args)
 
 
 def main(args=None):
