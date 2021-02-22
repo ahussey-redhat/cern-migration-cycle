@@ -33,6 +33,7 @@ INFO = 'info'
 WARNING = 'warning'
 ERROR = 'error'
 DEBUG = 'debug'
+SKIP_SHUTDOWN_VMS = False
 NC_VERSION = 2.72
 ROGER_ENABLE = True
 DEFAULT_CONFIG = '/etc/migration_cycle/migration_cycle.conf'
@@ -283,7 +284,7 @@ def cold_migration(cloudclient, server, hypervisor, exec_mode, logger):
     return False
 
 
-def get_instances(cloud, logger, compute_node):
+def get_instances(cloud, compute_node, logger):
     """Returns the list of instances hosted in a compute_node"""
 
     nc = init_nova_client(cloud, logger)
@@ -298,7 +299,7 @@ def get_instances(cloud, logger, compute_node):
     return instances
 
 
-def is_compute_node_empty(cloud, logger, compute_node):
+def is_compute_node_empty(cloud, compute_node, logger):
     """Returns True if there are no instances hosted in a compute_node"""
 
     instances = get_instances(cloud, compute_node, logger)
@@ -306,6 +307,18 @@ def is_compute_node_empty(cloud, logger, compute_node):
         logger.info("[{}][compute node is NOT empty]".format(compute_node))
         return False
     logger.info("[{}][compute node is empty]".format(compute_node))
+    return True
+
+
+def are_instances_shutdown(cloud, compute_node, logger):
+    """Returns True if all instances are in SHUTOFF state. False otherwise"""
+    # List of servers
+    instances = get_instances(cloud, compute_node, logger)
+    for instance in instances:
+        if instance.status != "SHUTOFF":
+            log_event(logger, INFO, "[{}][not in shutoff state.][{}]"
+                      .format(instance.name, instance.status))
+            return False
     return True
 
 
@@ -415,21 +428,34 @@ def vms_migration(cloudclient, hypervisor, exec_mode, logger):
                                            .format(u_server.name))
                 elif u_server.status == "SHUTOFF":
                     # do cold migration
-                    res = cold_migration(cloudclient,
-                                         u_server,
-                                         hypervisor,
-                                         exec_mode,
-                                         logger)
+                    if SKIP_SHUTDOWN_VMS:
+                        log_event(logger, INFO,
+                                  "[{}][skip_shutdown_vms option provided]"
+                                  .format(u_server.name))
+                        res = False
+                    else:
+                        # do cold migration
+                        res = cold_migration(cloudclient,
+                                             u_server,
+                                             hypervisor,
+                                             exec_mode,
+                                             logger)
                 else:
                     msg = "[{}][failed to migrate]\
                         [not in ACTIVE or SHUTOFF status]".format(
-                            u_server.name)
+                        u_server.name)
                     log_event(logger, INFO, msg)
                     res = False
-                # store result if false break
+                # store result if false log
                 if not res:
-                    log_event(logger, INFO, "[{}][migration failed]"
-                              .format(u_server.name))
+                    if SKIP_SHUTDOWN_VMS:
+                        log_event(logger, INFO,
+                                  "[{}][shutdown state not migrated]"
+                                  .format(u_server.name))
+                    else:
+                        log_event(logger, INFO,
+                                  "[{}][migration failed]"
+                                  .format(u_server.name))
             else:
                 log_event(logger, WARNING,
                           "[{}][can't be migrated. task state not NONE]"
@@ -758,7 +784,7 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
 
     # check if migration was successful
     # if there are still vms left don't reboot
-    if is_compute_node_empty(region, logger, host):
+    if is_compute_node_empty(region, host, logger):
         if REBOOT:
             reboot_manager(cloud, nc, host, logger, exec_mode, args)
         else:
@@ -767,9 +793,22 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
             log_event(logger, INFO, "[{}][skip reboot]".format(host))
             
     else:
-        log_event(logger, INFO,
-                  "[{}][compute node still has VMs. Can't reboot]"
-                  .format(host))
+        # check if skip_shutdown_vms option provided
+        if SKIP_SHUTDOWN_VMS:
+            log_event(logger, INFO, "[skip_shutdown_vms option provided]")
+            log_event(logger, INFO, "[{}][check if all vms are in shutdown state]"
+                        .format(host))
+            if are_instances_shutdown(region, host, logger):
+                if args.no_reboot:
+                    logger.info("[{}][no_reboot option provided]"
+                                .format(host))
+                else:
+                    reboot_manager(cloud, nc, host, logger, exec_mode, args)
+            else:
+                logger.info("[{}][vms not in shutoff state. can't reboot]"
+                            .format(host))
+        else:
+            logger.info("[{}][still has VMs. can't reboot]".format(host))
 
     # enable compute service
     if COMPUTE_ENABLE:
@@ -1077,6 +1116,22 @@ def config_file_execution(args):
             except Exception:
                 logger.info("region not defined. Using the default 'cern'")
 
+            # no skip_shutdown_vms
+            global SKIP_SHUTDOWN_VMS
+            try:
+                skip_shutdown = config[cell]['skip_shutdown_vms'].lower()\
+                    .strip()
+                if skip_shutdown == 'true':
+                    SKIP_SHUTDOWN_VMS = True
+                elif skip_shutdown == 'false':
+                    SKIP_SHUTDOWN_VMS = False
+                else:
+                    log_event(logger, ERROR,
+                              "skip_shutdown_vms only support true/false.")
+                    sys.exit()
+            except Exception:
+                SKIP_SHUTDOWN_VMS = False
+
             # perform migration operation
             thread = threading.Thread(target=cell_migration,
                                       args=(region, cloud, nc, hv_list,
@@ -1173,6 +1228,10 @@ def main(args=None):
     global DISABLED_REASON
     if args.disable_message is not None:
         DISABLED_REASON = args.disable_reason
+    # skip_shutdown_vms
+    global SKIP_SHUTDOWN_VMS
+    if args.skip_shutdown_vms:
+        SKIP_SHUTDOWN_VMS = True
 
     if args.hosts:
         cli_execution(args)
