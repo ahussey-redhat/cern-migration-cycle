@@ -33,6 +33,7 @@ ERROR = 'error'
 DEBUG = 'debug'
 NC_VERSION = 2.72
 
+DEFAULT_CONFIG = '/etc/migration_cycle/migration_cycle.conf'
 
 def send_mail(mail_body):
     mail_to = ','.join(MAIL_RECEIPENTS)
@@ -896,10 +897,20 @@ def init_nova_client(cloud, logger):
     return nc
 
 
-def config_file_execution():
+def config_file_execution(args):
     # parse the config file
     config = configparser.ConfigParser()
-    config.read('/etc/migration_cycle/migration_cycle.conf')
+    # if custom config file is provided
+    if args.config:
+        try:
+            # read the provided config file
+            config.read(args.config)
+        except Exception:
+            sys.exit('unable to read provided config file. {}'
+                     .format(args.config))
+    else:
+        # use default config /etc/migration_cycle/migration_cycle.conf
+        config.read(DEFAULT_CONFIG)
 
     # get execution mode
     exec_mode = config['DEFAULT']['dryrun'].lower()
@@ -1015,7 +1026,6 @@ def config_file_execution():
             except Exception:
                 logger.info("region not defined. Using the default 'cern'")
 
-
             # perform migration operation
             thread = threading.Thread(target=cell_migration,
                                       args=(region, cloud, nc, hv_list,
@@ -1033,38 +1043,6 @@ def config_file_execution():
 
 # interactive execution
 def cli_execution(args):
-    parser = argparse.ArgumentParser(description='Interactive Migration')
-
-    behaviour = parser.add_mutually_exclusive_group()
-    behaviour.add_argument('--perform', dest='exec_mode', action='store_true',)
-    behaviour.add_argument('--dryrun', dest='exec_mode', action='store_false',)
-
-    parser.add_argument('--cloud', dest='cloud', default='cern',
-                        help='cloud in clouds.yaml for the compute nodes')
-
-    parser.add_argument('--hosts', dest='hosts', required=True,
-                        help='select the hosts to empty')
-
-    parser.add_argument('--no-reboot', dest='no_reboot', action='store_true',
-                        help='do not reboot the host when empty')
-
-    parser.add_argument('--no-compute-enable', dest='no_compute_enable',
-                        action='store_true',
-                        help='do not enable the compute service after reboot')
-
-    parser.add_argument('--no-roger-enable', dest='no_roger_enable',
-                        action='store_true',
-                        help='do not enable roger after reboot')
-
-    parser.add_argument('--disable-message', dest='disable_message',
-                        help='disabled message to use in the service')
-
-    parser.add_argument('--skip-shutdown-vms', dest='skip_shutdown_vms',
-                        action='store_true',
-                        help='do not cold migrate instances if they are in'
-                        'shutdown state')
-
-    args = parser.parse_args()
 
     for host in args.hosts.split():
         region = args.cloud
@@ -1087,12 +1065,49 @@ def main(args=None):
     if not os.path.exists('/var/log/migration_cycle'):
         os.makedirs('/var/log/migration_cycle')
 
-    if args == []:
-        # config file execution
-        config_file_execution()
-    else:
-        # interactive execution
+    parser = argparse.ArgumentParser(description='Migration cycle interface')
+
+    execution_type = parser.add_mutually_exclusive_group(required=True)
+    execution_type.add_argument('--config', nargs='?',
+                                const=DEFAULT_CONFIG,
+                                help='use custom config file',
+                                type=str)
+    execution_type.add_argument('--hosts', dest='hosts',
+                                help='select the hosts to empty')
+
+    parser.add_argument('--cloud', dest='cloud', default='cern',
+                        help='cloud in clouds.yaml for the compute nodes')
+
+    parser.add_argument('--no-reboot', dest='no_reboot', action='store_true',
+                        help='do not reboot the host when empty')
+
+    parser.add_argument('--no-compute-enable', dest='no_compute_enable',
+                        action='store_true',
+                        help='do not enable the compute service after reboot')
+
+    parser.add_argument('--no-roger-enable', dest='no_roger_enable',
+                        action='store_true',
+                        help='do not enable roger after reboot')
+
+    parser.add_argument('--disable-message', dest='disable_message',
+                        help='disabled message to use in the service')
+
+    parser.add_argument('--skip-shutdown-vms', dest='skip_shutdown_vms',
+                        action='store_true',
+                        help='do not cold migrate instances if they are in'
+                        'shutdown state')
+
+    args = parser.parse_args()
+
+    # add exec mode
+    args.exec_mode = True
+
+    if args.hosts:
         cli_execution(args)
+    elif args.config:
+        config_file_execution(args)
+    else:
+        sys.exit(parser.print_help())
 
 
 if __name__ == "__main__":
