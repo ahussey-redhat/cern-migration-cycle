@@ -1,0 +1,21 @@
+SPECFILE            = $(shell find -maxdepth 1 -type f -name *.spec)
+SPECFILE_NAME       = $(shell awk '$$1 == "Name:"     { print $$2 }' $(SPECFILE) )
+SPECFILE_VERSION    = $(shell awk '$$1 == "Version:"  { print $$2 }' $(SPECFILE) )
+SPECFILE_RELEASE    = $(shell awk '$$1 == "Release:"  { print $$2 }' $(SPECFILE) )
+TARFILE             = $(SPECFILE_NAME)-$(SPECFILE_VERSION).tar.gz
+DIST               ?= $(shell rpm --eval %{dist})
+
+sources:
+	python3 setup.py egg_info || python setup.py egg_info
+	cp *.egg-info/PKG-INFO .
+	rm -rf *.egg-info
+	tar -zcvf $(TARFILE) --exclude-vcs --exclude=*.spec --exclude=Makefile.koji --transform 's,^,$(SPECFILE_NAME)-$(SPECFILE_VERSION)/,' ./*
+
+clean:
+	rm -rf build/ $(TARFILE)
+
+rpm: sources
+	rpmbuild -bb --define 'dist $(DIST)' --define "_topdir $(PWD)/build" --define '_sourcedir $(PWD)' $(SPECFILE)
+
+srpm: sources
+	rpmbuild -bs --define 'dist $(DIST)' --define "_topdir $(PWD)/build" --define '_sourcedir $(PWD)' $(SPECFILE)

@@ -1,11 +1,6 @@
-from setuptools import setup
+#!/usr/bin/env python
 
-setup(name='migration_cycle',
-      version='0.1',
-      description='Migration cycle service',
-      url='https://gitlab.cern.ch/jgupta/migration_cycle',
-      author='Jayaditya Gupta',
-      author_email='jayaditya.gupta@cern.ch',
-      license='GPLv3',
-      packages=['migration_cycle'],
-      zip_safe=False)
+import setuptools
+setuptools.setup(
+    setup_requires=['pbr'],
+    pbr=True)
