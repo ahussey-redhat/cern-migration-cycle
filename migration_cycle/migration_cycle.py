@@ -31,6 +31,7 @@ INFO = 'info'
 WARNING = 'warning'
 ERROR = 'error'
 DEBUG = 'debug'
+NC_VERSION = 2.72
 
 
 def send_mail(mail_body):
@@ -61,7 +62,6 @@ def log_event(logger, level, msg):
     else:
         logger.error("invalid log level provided.")
 
-NC_VERSION = 2.72
 
 def live_migration(cloudclient, server, hypervisor, exec_mode, logger):
     # start time
@@ -260,6 +260,7 @@ def cold_migration(cloudclient, server, hypervisor, exec_mode, logger):
         return True
     return False
 
+
 def get_instances(cloud, logger, compute_node):
     """Returns the list of instances hosted in a compute_node"""
 
@@ -366,7 +367,7 @@ def vms_migration(cloudclient, hypervisor, exec_mode, logger):
             # check if server still exists
             if u_server is None:
                 log_event(logger, ERROR,
-                          "[%s][no longer exists/found]", server.name)
+                          "[{}][no longer exists/found]".format(server.name))
                 continue
             log_event(logger, INFO, "[{}][state][{}]"
                       .format(u_server.name, u_server.status))
@@ -389,17 +390,19 @@ def vms_migration(cloudclient, hypervisor, exec_mode, logger):
                                          exec_mode,
                                          logger)
                 else:
-                    log_event(logger, INFO, "[%s][failed to migrate] \
-                    [not in ACTIVE or SHUTOFF status]", u_server.name)
+                    msg = "[{}][failed to migrate]\
+                        [not in ACTIVE or SHUTOFF status]".format(
+                            u_server.name)
+                    log_event(logger, INFO, msg)
                     res = False
                 # store result if false break
                 if not res:
-                    log_event(logger, INFO, "[%s][migration failed]",
-                              u_server.name)
+                    log_event(logger, INFO, "[{}][migration failed]"
+                              .format(u_server.name))
             else:
                 log_event(logger, WARNING,
-                          "[%s][can't be migrated. task state not NONE]",
-                          u_server.name)
+                          "[{}][can't be migrated. task state not NONE]"
+                          .format(u_server.name))
     else:
         log_event(logger, INFO,
                   "[{}][NO VMs in the compute node]".format(hypervisor))
@@ -597,7 +600,7 @@ def cell_migration(region, cloud, nc, hosts, cell_name, logger, exec_mode, args)
         count += 1
         log_event(logger, INFO, "[working on compute node [{}]. ({}/{})]"
                   .format(host, count, cell_host_count))
-        host_migration(cloud, nc, host, logger, exec_mode, args)
+        host_migration(region, cloud, nc, host, logger, exec_mode, args)
 
 
 def reboot_manager(cloud, nc, host, logger, exec_mode, args):
