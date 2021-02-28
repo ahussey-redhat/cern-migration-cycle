@@ -25,9 +25,9 @@ logging.basicConfig(level=logging.INFO,
 
 
 THREAD_MANAGER = []
-MAX_TIMEOUT = 14400  # 4 hours
+MAX_MIGRATION_TIMEOUT = 14400  #4 hours
+MAX_REBOOT_TIMEOUT = 1800 #30 minutes
 SLEEP_TIME = 30
-INCREMENT = 0
 MAIL_RECEIPENTS = []
 INFO = 'info'
 WARNING = 'warning'
@@ -115,9 +115,9 @@ def live_migration(cloudclient, server, hypervisor, logger):
                       .format(server.name, e))
             return False
 
-    INCREMENT = 0
-    while MAX_TIMEOUT > INCREMENT:
-        INCREMENT = INCREMENT + SLEEP_TIME
+    increment = 0
+    while MAX_MIGRATION_TIMEOUT > increment:
+        increment = increment + SLEEP_TIME
         time.sleep(SLEEP_TIME)
         # logger.info("{} Live migration progress : {}s"
         #            .format(server.name, INCREMENT))
@@ -192,9 +192,9 @@ def cold_migration(cloudclient, server, hypervisor, logger):
         return False
 
     # cold migration checks
-    INCREMENT = 0
-    while MAX_TIMEOUT > INCREMENT:
-        INCREMENT = INCREMENT + SLEEP_TIME
+    increment = 0
+    while MAX_MIGRATION_TIMEOUT > increment:
+        increment = increment + SLEEP_TIME
         time.sleep(SLEEP_TIME)
         # logger.info("{} Cold migration progress : {}s"
         #            .format(server.name, INCREMENT))
@@ -566,9 +566,9 @@ def ssh_reboot(host, logger):
 
 def hv_post_reboot_checks(old_uptime, host, logger):
     result = False
-    sleep_interval = 60
-    counter = 0
-    while counter <= 30:
+    increment = 0
+    while MAX_REBOOT_TIMEOUT > increment:
+        increment = increment + SLEEP_TIME
         new_uptime = ssh_uptime([host], logger)
         if bool(new_uptime):
             log_event(logger, INFO,
@@ -579,8 +579,7 @@ def hv_post_reboot_checks(old_uptime, host, logger):
                             "[{}][reboot success]".format(host))
                 result = True
                 break
-        counter = counter + 1
-        time.sleep(sleep_interval)
+        time.sleep(SLEEP_TIME)
     return result
 
 
