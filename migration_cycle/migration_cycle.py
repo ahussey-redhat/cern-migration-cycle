@@ -83,16 +83,10 @@ def ping_instance(hostname, logger):
         return False
 
 
-def live_migration(cloudclient, server, hypervisor, exec_mode, logger):
+def live_migration(cloudclient, server, hypervisor, logger):
     # start time
     start = time.time()
 
-    if not exec_mode:
-        log_event(logger, INFO,
-                  "[{}][instance-uuid {}]".format(server.name, server.id))
-        log_event(logger, INFO,
-                  "[{}][DRYRUN][live migration][started]".format(server.name))
-        return True
     log_event(logger, INFO,
               "[{}][instance-uuid: {}]".format(server.name, server.id))
     # check if volume is attached to an instance
@@ -179,15 +173,10 @@ def live_migration(cloudclient, server, hypervisor, exec_mode, logger):
     return False
 
 
-def cold_migration(cloudclient, server, hypervisor, exec_mode, logger):
+def cold_migration(cloudclient, server, hypervisor, logger):
     # start time
     start = time.time()
 
-    if not exec_mode:
-        log_event(logger, INFO, "[{}] id {}".format(server.name, server.id))
-        log_event(logger, INFO, "[{}][DRYRUN][cold migration][started]"
-                  .format(server.name))
-        return True
     log_event(logger, INFO, "[{}] id {}".format(server.name, server.id))
     log_event(logger, INFO,
               "[{}][cold migration][started]".format(server.name))
@@ -322,10 +311,7 @@ def are_instances_shutdown(cloud, compute_node, logger):
     return True
 
 
-def empty_hv(cloudclient, hypervisor, exec_mode, logger):
-    if not exec_mode:
-        log_event(logger, INFO, "[{}][DRYRUN][NO VMs]".format(hypervisor))
-        return True
+def empty_hv(cloudclient, hypervisor, logger):
     # List of servers
     try:
         servers = cloudclient.get_servers_by_hypervisor(hypervisor)
@@ -354,7 +340,7 @@ def empty_hv(cloudclient, hypervisor, exec_mode, logger):
         return True
 
 
-def vm_list(cloudclient, hypervisor, exec_mode, logger):
+def vm_list(cloudclient, hypervisor, logger):
     # List of servers
     try:
         servers = cloudclient.get_servers_by_hypervisor(hypervisor)
@@ -372,10 +358,9 @@ def vm_list(cloudclient, hypervisor, exec_mode, logger):
     return servers_set, servers_name
 
 
-def vms_migration(cloudclient, hypervisor, exec_mode, logger):
+def vms_migration(cloudclient, hypervisor, logger):
     # List of servers
-    servers_set, servers_name = vm_list(cloudclient, hypervisor, exec_mode,
-                                        logger)
+    servers_set, servers_name = vm_list(cloudclient, hypervisor, logger)
     log_event(logger, INFO, "[{}][VMs] {}".format(hypervisor, servers_name))
 
     # get total servers
@@ -417,7 +402,6 @@ def vms_migration(cloudclient, hypervisor, exec_mode, logger):
                     res = live_migration(cloudclient,
                                          u_server,
                                          hypervisor,
-                                         exec_mode,
                                          logger)
                     # ping instance after migration success
                     if res:
@@ -438,7 +422,6 @@ def vms_migration(cloudclient, hypervisor, exec_mode, logger):
                         res = cold_migration(cloudclient,
                                              u_server,
                                              hypervisor,
-                                             exec_mode,
                                              logger)
                 else:
                     msg = "[{}][failed to migrate]\
@@ -545,41 +528,28 @@ def enable_compute_node(nova_client, compute_node, logger):
         raise e
 
 
-def enable_disable_alarm(host, operation, exec_mode, logger):
-    if not exec_mode:
-        log_event(logger, INFO,
-                  "[{}] [DRYRUN] [roger alarm {}]".format(host, operation))
+def enable_disable_alarm(host, operation, logger):
+    cmd = "roger update " + host + " --all_alarms " + operation
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    output, errors = process.communicate()
+    if process.returncode == 0:
         return True
     else:
-        cmd = "roger update " + host + " --all_alarms " + operation
-        process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-        output, errors = process.communicate()
-        if process.returncode == 0:
-            return True
-        else:
-            return False
+        return False
 
 
-def ai_reboot_host(host, exec_mode, logger):
-    if not exec_mode:
-        log_event(logger, INFO, "[{}][DRYRUN][rebooted]".format(host))
+def ai_reboot_host(host, logger):
+    cmd = "ai-remote-power-control cycle " + host
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    output, errors = process.communicate()
+    if process.returncode == 0:
         return True
     else:
-        cmd = "ai-remote-power-control cycle " + host
-        process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-        output, errors = process.communicate()
-        if process.returncode == 0:
-            return True
-        else:
-            return False
+        return False
 
 
-def ssh_reboot(host, exec_mode, logger):
+def ssh_reboot(host, logger):
     # ssh into host and send reboot command
-    if not exec_mode:
-        log_event(logger, INFO, "[{}][DRYRUN][reboot via SSH success]"
-                  .format(host))
-        return True
     try:
         output, error = ssh_executor(host, "reboot")
     except Exception as e:
@@ -594,31 +564,27 @@ def ssh_reboot(host, exec_mode, logger):
     return True
 
 
-def hv_post_reboot_checks(old_uptime, host, exec_mode, logger):
+def hv_post_reboot_checks(old_uptime, host, logger):
     result = False
     sleep_interval = 60
-    if not exec_mode:
-        log_event(logger, INFO, "[{}][DRYRUN][reboot success]".format(host))
-        return True
-    else:
-        counter = 0
-        while counter <= 30:
-            new_uptime = ssh_uptime([host], logger)
-            if bool(new_uptime):
+    counter = 0
+    while counter <= 30:
+        new_uptime = ssh_uptime([host], logger)
+        if bool(new_uptime):
+            log_event(logger, INFO,
+                        "[{}][new uptime][{}]"
+                        .format(host, new_uptime[host]))
+            if(float(old_uptime[host]) > float(new_uptime[host])):
                 log_event(logger, INFO,
-                          "[{}][new uptime][{}]"
-                          .format(host, new_uptime[host]))
-                if(float(old_uptime[host]) > float(new_uptime[host])):
-                    log_event(logger, INFO,
-                              "[{}][reboot success]".format(host))
-                    result = True
-                    break
-            counter = counter + 1
-            time.sleep(sleep_interval)
+                            "[{}][reboot success]".format(host))
+                result = True
+                break
+        counter = counter + 1
+        time.sleep(sleep_interval)
     return result
 
 
-def get_ironic_node(nc, host, exec_mode, logger):
+def get_ironic_node(nc, host, logger):
     # returns ironic server
     host = host.replace(".cern.ch", "")
     search_opts = {}
@@ -635,9 +601,9 @@ def get_ironic_node(nc, host, exec_mode, logger):
     return ironic_server
 
 
-def ironic_check(nc, host, exec_mode, logger):
+def ironic_check(nc, host, logger):
     # check if the given host is ironic managed or not
-    ironic_server = get_ironic_node(nc, host, exec_mode, logger)
+    ironic_server = get_ironic_node(nc, host, logger)
 
     # IF not ironic list is Empty
     if not ironic_server:
@@ -646,11 +612,7 @@ def ironic_check(nc, host, exec_mode, logger):
         return True
 
 
-def reboot_ironic(nc, host, exec_mode, reboot_type, logger):
-    if not exec_mode:
-        log_event(logger, INFO, "[DRYRUN][{}][ironic reboot success]"
-                  .format(host))
-        return True
+def reboot_ironic(nc, host, reboot_type, logger):
     try:
         node = host
         # REBOOT_SOFT, REBOOT_HARD = 'SOFT', 'HARD'
@@ -663,7 +625,7 @@ def reboot_ironic(nc, host, exec_mode, reboot_type, logger):
     return False
 
 
-def cell_migration(region, cloud, nc, hosts, cell_name, logger, exec_mode, args):
+def cell_migration(region, cloud, nc, hosts, cell_name, logger, args):
     count = 0
     cell_host_count = len(hosts)
     while hosts:
@@ -678,10 +640,10 @@ def cell_migration(region, cloud, nc, hosts, cell_name, logger, exec_mode, args)
         count += 1
         log_event(logger, INFO, "[working on compute node [{}]. ({}/{})]"
                   .format(host, count, cell_host_count))
-        host_migration(region, cloud, nc, host, logger, exec_mode, args)
+        host_migration(region, cloud, nc, host, logger, args)
 
 
-def reboot_manager(cloud, nc, host, logger, exec_mode, args):
+def reboot_manager(cloud, nc, host, logger, args):
     # we need list for ssh_uptime
     # get uptime and store it
     old_uptime = ssh_uptime([host], logger)
@@ -689,16 +651,16 @@ def reboot_manager(cloud, nc, host, logger, exec_mode, args):
               "[{}][old uptime] [{}]".format(host, old_uptime[host]))
 
     # check if the HV is ironic managed
-    ironic_node = get_ironic_node(nc, host, exec_mode, logger)
+    ironic_node = get_ironic_node(nc, host, logger)
     if ironic_node:
         # first try reboot by doing SSH
-        if ssh_reboot(host, exec_mode, logger):
+        if ssh_reboot(host, logger):
             log_event(logger, INFO, "[{}][ironic node reboot via SSH success]"
                       .format(host))
-        elif reboot_ironic(nc, ironic_node, exec_mode, 'SOFT', logger):
+        elif reboot_ironic(nc, ironic_node, 'SOFT', logger):
             # ironic managed soft reboot
             log_event(logger, INFO, "[{}][soft reboot success]".format(host))
-        elif reboot_ironic(nc, ironic_node, exec_mode, 'HARD', logger):
+        elif reboot_ironic(nc, ironic_node, 'HARD', logger):
             # ironic managed hard reboot
             log_event(logger, INFO, "[{}][hard reboot cmd success]"
                       .format(host))
@@ -706,7 +668,7 @@ def reboot_manager(cloud, nc, host, logger, exec_mode, args):
             log_event(logger, INFO, "[{}][reboot cmd failed]".format(host))
 
         # hypervisor post reboot checks
-        if hv_post_reboot_checks(old_uptime, host, exec_mode, logger):
+        if hv_post_reboot_checks(old_uptime, host, logger):
             log_event(logger, INFO, "[{}]".format(host) +
                       "[ironic migration and reboot operation success]")
         else:
@@ -717,9 +679,9 @@ def reboot_manager(cloud, nc, host, logger, exec_mode, args):
     else:
         ai_reboot = False
         # first try reboot by doing SSH
-        if ssh_reboot(host, exec_mode, logger):
+        if ssh_reboot(host, logger):
             # hv post reboot confirmation checks
-            if hv_post_reboot_checks(old_uptime, host, exec_mode, logger):
+            if hv_post_reboot_checks(old_uptime, host, logger):
                 log_event(logger, INFO, "[{}][reboot via SSH success]"
                           .format(host))
                 log_event(logger, INFO, "[{}] ".format(host) +
@@ -729,11 +691,11 @@ def reboot_manager(cloud, nc, host, logger, exec_mode, args):
                 ai_reboot = True
         # if ssh_reboot failed Try with ai-power-control
         if ai_reboot:
-            if ai_reboot_host(host, exec_mode, logger):
+            if ai_reboot_host(host, logger):
                 log_event(logger, INFO,
                           "[{}][reboot cmd success]".format(host))
                 # hv post reboot confirmation checks
-                if hv_post_reboot_checks(old_uptime, host, exec_mode, logger):
+                if hv_post_reboot_checks(old_uptime, host, logger):
                     log_event(logger, INFO, "[{}]".format(host) +
                               "[migration and reboot operation " +
                               "successful]")
@@ -742,7 +704,7 @@ def reboot_manager(cloud, nc, host, logger, exec_mode, args):
                           "[{}][reboot cmd failed]".format(host))
 
 
-def host_migration(region, cloud, nc, host, logger, exec_mode, args):
+def host_migration(region, cloud, nc, host, logger, args):
 
     # get compute service uuid
     service_uuid = nc.services.list(host)
@@ -766,7 +728,7 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
 
     # change GNI alarm status via Roger
     # disable alarm
-    if enable_disable_alarm(host, "false", exec_mode, logger):
+    if enable_disable_alarm(host, "false", logger):
         log_event(logger, INFO, "[{}][roger alarm disabled]".format(host))
     else:
         log_event(logger, ERROR, "[{}][failed to disable roger alarm]")
@@ -780,13 +742,13 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
         log_event(logger, INFO, "[{}][skiping node]".format(host))
         return
 
-    vms_migration(cloud, host, exec_mode, logger)
+    vms_migration(cloud, host, logger)
 
     # check if migration was successful
     # if there are still vms left don't reboot
     if is_compute_node_empty(region, host, logger):
         if REBOOT:
-            reboot_manager(cloud, nc, host, logger, exec_mode, args)
+            reboot_manager(cloud, nc, host, logger, args)
         else:
             log_event(logger, INFO,
                       "[{}][reboot FALSE option provided]".format(host))
@@ -803,7 +765,7 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
                     logger.info("[{}][no_reboot option provided]"
                                 .format(host))
                 else:
-                    reboot_manager(cloud, nc, host, logger, exec_mode, args)
+                    reboot_manager(cloud, nc, host, logger, args)
             else:
                 logger.info("[{}][vms not in shutoff state. can't reboot]"
                             .format(host))
@@ -827,7 +789,7 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
     if ROGER_ENABLE:
         # change GNI alarm status via Roger
         # enable alarm
-        if enable_disable_alarm(host, "true", exec_mode, logger):
+        if enable_disable_alarm(host, "true", logger):
             log_event(logger, INFO, "[{}][alarm enabled]".format(host))
     else:
         log_event(logger, INFO,
@@ -978,9 +940,6 @@ def config_file_execution(args):
         # use default config /etc/migration_cycle/migration_cycle.conf
         config.read(DEFAULT_CONFIG)
 
-    # get execution mode
-    exec_mode = config['DEFAULT']['dryrun'].lower()
-
     # get mailing receipents
     try:
         mail_list = config['DEFAULT']['mail_list']
@@ -989,16 +948,6 @@ def config_file_execution(args):
         MAIL_RECEIPENTS = [m.strip() for m in MAIL_RECEIPENTS]
     except Exception:
         MAIL_RECEIPENTS = []
-
-    # dryrun mode
-    if exec_mode == 'true':
-        exec_mode = False
-    # perform mode
-    elif exec_mode == 'false':
-        exec_mode = True
-    else:
-        print('The configuration value for dryrun is not correctly ' +
-              ' defined. Use true/false')
 
     region = 'cern'
 
@@ -1138,7 +1087,7 @@ def config_file_execution(args):
             thread = threading.Thread(target=cell_migration,
                                       args=(region, cloud, nc, hv_list,
                                             config[cell]['name'],
-                                            logger, exec_mode, args))
+                                            logger, args))
             thread.start()
             THREAD_MANAGER.append(thread)
 
@@ -1164,7 +1113,7 @@ def cli_execution(args):
 
         # make nova client
         nc = make_nova_client(cloud, logger)
-        host_migration(region, cloud, nc, host, logger, args.exec_mode, args)
+        host_migration(region, cloud, nc, host, logger, args)
 
 
 def main(args=None):
@@ -1207,9 +1156,6 @@ def main(args=None):
                         'shutdown state')
 
     args = parser.parse_args()
-
-    # add exec mode
-    args.exec_mode = True
 
     # compute_enable
     global COMPUTE_ENABLE
