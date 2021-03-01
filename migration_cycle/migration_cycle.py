@@ -6,6 +6,7 @@ import logging
 import os
 from ccitools.utils.cloud import CloudRegionClient
 from ccitools.cmd.sendmail import SendmailCMD
+from distutils.util import strtobool
 import subprocess
 import sys
 import time
@@ -34,6 +35,7 @@ DEBUG = 'debug'
 NC_VERSION = 2.72
 
 DEFAULT_CONFIG = '/etc/migration_cycle/migration_cycle.conf'
+COMPUTE_ENABLE = True
 
 def send_mail(mail_body):
     mail_to = ','.join(MAIL_RECEIPENTS)
@@ -744,18 +746,18 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
                   "[{}][compute node still has VMs. Can't reboot]"
                   .format(host))
 
-    # do not enable compute service
-    if args.no_compute_enable:
-        log_event(logger, INFO,
-                  "[{}][no_compute_enable option provided]".format(host))
-        log_event(logger, INFO,
-                  "[{}][compute service not enabled]".format(host))
-    else:
+    # enable compute service
+    if COMPUTE_ENABLE:
         # enable the compute node
         try:
             enable_compute_node(nc, host, logger)
         except:
             pass
+    else:
+        log_event(logger, INFO,
+                  "[{}][compute_enable FALSE option provided]".format(host))
+        log_event(logger, INFO,
+                  "[{}][compute service not enabled]".format(host))
 
     # do not enable roger alarm
     if args.no_roger_enable:
@@ -1006,12 +1008,23 @@ def config_file_execution(args):
             except Exception:
                 args.no_reboot = False
 
-            # no_compute_enable
+            # compute_enable
+            global COMPUTE_ENABLE
             try:
-                args.no_compute_enable = config[cell]['no_compute_enable']\
-                                         .lower()
+                compute_enable = config[cell]['compute_enable']\
+                                         .lower().split()
+                if compute_enable == 'true':
+                    COMPUTE_ENABLE = True
+                elif compute_enable == 'false':
+                    COMPUTE_ENABLE = False
+                else:
+                    msg = "compute_enable only supports true/false"\
+                          " {} provided".format(compute_enable)
+                    log_error_mail(logger, msg)
+                    sys.exit()
             except Exception:
-                args.no_compute_enable = False
+                COMPUTE_ENABLE = True
+
 
             # no_roger_enable
             try:
@@ -1081,9 +1094,9 @@ def main(args=None):
     parser.add_argument('--no-reboot', dest='no_reboot', action='store_true',
                         help='do not reboot the host when empty')
 
-    parser.add_argument('--no-compute-enable', dest='no_compute_enable',
-                        action='store_true',
-                        help='do not enable the compute service after reboot')
+    parser.add_argument('--compute-enable', dest='compute_enable',
+                        type=lambda x: bool(strtobool(x)),
+                        help='enable/disable the compute service after reboot')
 
     parser.add_argument('--no-roger-enable', dest='no_roger_enable',
                         action='store_true',
@@ -1101,6 +1114,11 @@ def main(args=None):
 
     # add exec mode
     args.exec_mode = True
+
+    # compute_enable
+    global COMPUTE_ENABLE
+    if args.compute_enable is not None:
+        COMPUTE_ENABLE = args.compute_enable
 
     if args.hosts:
         cli_execution(args)
