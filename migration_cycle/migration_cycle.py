@@ -998,9 +998,6 @@ def config_file_execution(args):
             # create hv_list
             hv_list = make_hv_list(result, included_nodes, excluded_nodes)
 
-            # create argument parameters
-            parser = argparse.ArgumentParser()
-            args = parser.parse_args()
 
             # no_reboot
             try:
