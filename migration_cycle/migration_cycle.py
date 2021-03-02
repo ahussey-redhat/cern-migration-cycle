@@ -33,7 +33,7 @@ WARNING = 'warning'
 ERROR = 'error'
 DEBUG = 'debug'
 NC_VERSION = 2.72
-
+ROGER_ENABLE = True
 DEFAULT_CONFIG = '/etc/migration_cycle/migration_cycle.conf'
 COMPUTE_ENABLE = True
 
@@ -759,16 +759,16 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
         log_event(logger, INFO,
                   "[{}][compute service not enabled]".format(host))
 
-    # do not enable roger alarm
-    if args.no_roger_enable:
-        log_event(logger, INFO,
-                  "[{}][no_roger_enable option provided]".format(host))
-        log_event(logger, INFO, "[{}][roger alarm not enabled]".format(host))
-    else:
+    # enable roger alarm
+    if ROGER_ENABLE:
         # change GNI alarm status via Roger
         # enable alarm
         if enable_disable_alarm(host, "true", exec_mode, logger):
             log_event(logger, INFO, "[{}][alarm enabled]".format(host))
+    else:
+        log_event(logger, INFO,
+                  "[{}][roger_enable FALSE option provided]".format(host))
+        log_event(logger, INFO, "[{}][roger alarm not enabled]".format(host))
 
 
 def create_sorted_uptime_hosts(uptime_dict):
@@ -1023,11 +1023,19 @@ def config_file_execution(args):
                 COMPUTE_ENABLE = True
 
 
-            # no_roger_enable
+            # roger_enable
             try:
-                args.no_roger_enable = config[cell]['no_roger_enable'].lower()
+                roger_enable = config[cell]['roger_enable'].lower().strip()
+                if roger_enable == 'true':
+                    ROGER_ENABLE = True
+                elif roger_enable == 'false':
+                    ROGER_ENABLE = False
+                else:
+                    msg = "roger_enable only supports true/false."
+                    " {} provided".format(roger_enable)
+                    log_event(logger, ERROR, msg)
             except Exception:
-                args.no_roger_enable = False
+                ROGER_ENABLE = True
 
             # region
             # TODO: to be replaced by cloud whe all code is refactored
@@ -1095,9 +1103,9 @@ def main(args=None):
                         type=lambda x: bool(strtobool(x)),
                         help='enable/disable the compute service after reboot')
 
-    parser.add_argument('--no-roger-enable', dest='no_roger_enable',
-                        action='store_true',
-                        help='do not enable roger after reboot')
+    parser.add_argument('--roger-enable', dest='roger_enable',
+                        type=lambda x: bool(strtobool(x)),
+                        help='enable/disable roger after reboot')
 
     parser.add_argument('--disable-message', dest='disable_message',
                         help='disabled message to use in the service')
@@ -1116,6 +1124,11 @@ def main(args=None):
     global COMPUTE_ENABLE
     if args.compute_enable is not None:
         COMPUTE_ENABLE = args.compute_enable
+
+    # roger_enable
+    global ROGER_ENABLE
+    if args.roger_enable is not None:
+        ROGER_ENABLE = args.roger_enable
 
     if args.hosts:
         cli_execution(args)
