@@ -6,6 +6,7 @@ import logging
 import os
 from ccitools.utils.cloud import CloudRegionClient
 from ccitools.cmd.sendmail import SendmailCMD
+from datetime import datetime
 from distutils.util import strtobool
 import subprocess
 import sys
@@ -37,6 +38,8 @@ ROGER_ENABLE = True
 DEFAULT_CONFIG = '/etc/migration_cycle/migration_cycle.conf'
 COMPUTE_ENABLE = True
 REBOOT = True
+DISABLED_REASON = None
+
 
 def send_mail(mail_body):
     mail_to = ','.join(MAIL_RECEIPENTS)
@@ -468,11 +471,32 @@ def get_service_uuid(nova_client, compute_node, logger):
     return service_uuid
 
 
-def disable_compute_node(nova_client, compute_node, logger):
+def get_disabled_reason(region, compute_node, logger):
+    """Returns the reason why compute node was disabled if specified"""
+    nova_client = init_nova_client(region, logger)
+    service = nova_client.services.list(compute_node)
+    reason = service[0].disabled_reason
+    return reason
+
+
+def disable_compute_node(region, compute_node, logger):
+    # make nova client
+    nova_client = init_nova_client(region, logger)
+
     service_uuid = get_service_uuid(nova_client, compute_node, logger)
+
+    # if disable reason is None. set disable reason.
+    # if custom disable reason is provided use that IFF not already specified.
+    dr = get_disabled_reason(region, compute_node, logger)
+    if dr is None:
+        if DISABLED_REASON:
+            dr = DISABLED_REASON
+        else:
+            date = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
+            dr = "[Migration Cycle] {} working in the node"\
+                .format(date)
     try:
-        disable_reason = "[Migration Cycle] DATE working in the node..."
-        nova_client.services.disable_log_reason(service_uuid, disable_reason)
+        nova_client.services.disable_log_reason(service_uuid, dr)
         log_event(logger, INFO,
                   "[{}][compute node disabled]".format(compute_node))
     except Exception as e:
@@ -709,7 +733,7 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
         return
 
     try:
-        disable_compute_node(nc, host, logger)
+        disable_compute_node(region, host, logger)
     except:
         log_event(logger, INFO, "[{}][skiping node]".format(host))
         return
@@ -1117,8 +1141,8 @@ def main(args=None):
                         type=lambda x: bool(strtobool(x)),
                         help='enable/disable roger after reboot')
 
-    parser.add_argument('--disable-message', dest='disable_message',
-                        help='disabled message to use in the service')
+    parser.add_argument('--disable-reason', dest='disable_reason',
+                        help='disable reason to use in the service')
 
     parser.add_argument('--skip-shutdown-vms', dest='skip_shutdown_vms',
                         action='store_true',
@@ -1145,6 +1169,10 @@ def main(args=None):
     if args.reboot is not None:
         REBOOT = args.reboot
 
+    # disable message
+    global DISABLED_REASON
+    if args.disable_message is not None:
+        DISABLED_REASON = args.disable_reason
 
     if args.hosts:
         cli_execution(args)
