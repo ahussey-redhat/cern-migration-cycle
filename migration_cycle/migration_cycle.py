@@ -36,6 +36,7 @@ NC_VERSION = 2.72
 ROGER_ENABLE = True
 DEFAULT_CONFIG = '/etc/migration_cycle/migration_cycle.conf'
 COMPUTE_ENABLE = True
+REBOOT = True
 
 def send_mail(mail_body):
     mail_to = ','.join(MAIL_RECEIPENTS)
@@ -734,13 +735,13 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
     # check if migration was successful
     # if there are still vms left don't reboot
     if is_compute_node_empty(region, logger, host):
-        # skip reboot if no_reboot is TRUE
-        if args.no_reboot:
-            log_event(logger, INFO,
-                      "[{}][no_reboot option provided]".format(host))
-            log_event(logger, INFO, "[{}][skip reboot]".format(host))
-        else:
+        if REBOOT:
             reboot_manager(cloud, nc, host, logger, exec_mode, args)
+        else:
+            log_event(logger, INFO,
+                      "[{}][reboot FALSE option provided]".format(host))
+            log_event(logger, INFO, "[{}][skip reboot]".format(host))
+            
     else:
         log_event(logger, INFO,
                   "[{}][compute node still has VMs. Can't reboot]"
@@ -998,12 +999,20 @@ def config_file_execution(args):
             # create hv_list
             hv_list = make_hv_list(result, included_nodes, excluded_nodes)
 
-
-            # no_reboot
+            # reboot
             try:
-                args.no_reboot = config[cell]['no_reboot'].lower()
+                reboot = config[cell]['reboot'].lower().strip()
+                if reboot == 'true':
+                    REBOOT = True
+                elif reboot == 'false':
+                    REBOOT = False
+                else:
+                    log_event(logger, ERROR,
+                             "reboot only takes true/false. {} provided."
+                             .format(reboot))
+                    sys.exit()
             except Exception:
-                args.no_reboot = False
+                REBOOT = True
 
             # compute_enable
             global COMPUTE_ENABLE
@@ -1096,8 +1105,9 @@ def main(args=None):
     parser.add_argument('--cloud', dest='cloud', default='cern',
                         help='cloud in clouds.yaml for the compute nodes')
 
-    parser.add_argument('--no-reboot', dest='no_reboot', action='store_true',
-                        help='do not reboot the host when empty')
+    parser.add_argument('--reboot', dest='reboot',
+                        type=lambda x: bool(strtobool(x)),
+                        help='reboot host true/false when host is empty.')
 
     parser.add_argument('--compute-enable', dest='compute_enable',
                         type=lambda x: bool(strtobool(x)),
@@ -1129,6 +1139,12 @@ def main(args=None):
     global ROGER_ENABLE
     if args.roger_enable is not None:
         ROGER_ENABLE = args.roger_enable
+
+    # reboot
+    global REBOOT
+    if args.reboot is not None:
+        REBOOT = args.reboot
+
 
     if args.hosts:
         cli_execution(args)
