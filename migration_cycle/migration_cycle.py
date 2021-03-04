@@ -752,8 +752,8 @@ def host_migration(region, cloud, nc, host, logger, exec_mode, args):
     # else return
     match = nc.hypervisors.search(host, servers=False, detailed=False)
     hv = match[0]
-    if hv.state != "up" and hv.status != "enabled":
-        log_event(logger, ERROR, "[{}][compute node is not UP and enabled]"
+    if hv.state != "up" or hv.status != "enabled":
+        log_event(logger, ERROR, "[{}][compute node is not UP or enabled]"
                   .format(host))
         log_event(logger, INFO, "[{}][skiping compute node]".format(host))
         return
@@ -1063,6 +1063,7 @@ def config_file_execution(args):
             hv_list = make_hv_list(result, included_nodes, excluded_nodes)
 
             # reboot
+            global REBOOT
             try:
                 reboot = config[cell]['reboot'].lower().strip()
                 if reboot == 'true':
@@ -1081,7 +1082,7 @@ def config_file_execution(args):
             global COMPUTE_ENABLE
             try:
                 compute_enable = config[cell]['compute_enable']\
-                                         .lower().split()
+                                         .lower().strip()
                 if compute_enable == 'true':
                     COMPUTE_ENABLE = True
                 elif compute_enable == 'false':
@@ -1089,13 +1090,14 @@ def config_file_execution(args):
                 else:
                     msg = "compute_enable only supports true/false"\
                           " {} provided".format(compute_enable)
-                    log_error_mail(logger, msg)
+                    log_event(logger, ERROR, msg)
                     sys.exit()
             except Exception:
                 COMPUTE_ENABLE = True
 
 
             # roger_enable
+            global ROGER_ENABLE
             try:
                 roger_enable = config[cell]['roger_enable'].lower().strip()
                 if roger_enable == 'true':
@@ -1224,10 +1226,11 @@ def main(args=None):
     if args.reboot is not None:
         REBOOT = args.reboot
 
-    # disable message
+    # disable reason
     global DISABLED_REASON
-    if args.disable_message is not None:
+    if args.disable_reason is not None:
         DISABLED_REASON = args.disable_reason
+
     # skip_shutdown_vms
     global SKIP_SHUTDOWN_VMS
     if args.skip_shutdown_vms:
