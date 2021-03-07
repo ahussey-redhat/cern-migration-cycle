@@ -964,11 +964,15 @@ def config_file_execution(args):
     while True:
         for cell in config.sections():
 
+            cell_name = config[cell]['name']
             # create logger
             logfile_name = '/var/log/migration_cycle/' \
-                + 'cell_' + config[cell]['name'] + '.log'
+                + 'cell_' + cell_name + '.log'
             # logfile_name = config[cell]['name'] + '.log'
-            logger = setup_logger(config[cell]['name'], logfile_name)
+            logger = setup_logger(cell_name, logfile_name)
+
+            log_event(logger, INFO, "[{}][--> NEW EXECUTION <--]"
+                      .format(cell_name))
 
             # get nodes that need to be included
             try:
@@ -1106,6 +1110,9 @@ def cli_execution(args):
         # create logger
         logfile_name = '/var/log/migration_cycle/' + host + '.log'
         logger = setup_logger(host, logfile_name)
+
+        log_event(logger, INFO, "[{}][--> NEW EXECUTION <--]"
+                  .format(host))
 
         # make cloud client
         cloud = make_cloud_client()
