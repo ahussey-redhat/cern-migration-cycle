@@ -40,6 +40,7 @@ DEFAULT_CONFIG = '/etc/migration_cycle/migration_cycle.conf'
 COMPUTE_ENABLE = True
 REBOOT = True
 DISABLED_REASON = None
+SKIP_DISABLED_COMPUTE_NODES = True
 
 PING_UNAVAILABLE = 5
 PING_FREQUENCY = 2
@@ -728,19 +729,21 @@ def reboot_manager(cloud, nc, host, logger, args):
 
 def host_migration(region, cloud, nc, host, logger, args):
 
-    # get compute service uuid
-    service_uuid = nc.services.list(host)
-
     # get state and status of hypervisor
     # if state == up && status == enabled PROCEED
     # else return
     match = nc.hypervisors.search(host, servers=False, detailed=False)
-    hv = match[0]
-    if hv.state != "up" or hv.status != "enabled":
-        log_event(logger, ERROR, "[{}][compute node is not UP or enabled]"
-                  .format(host))
-        log_event(logger, INFO, "[{}][skiping compute node]".format(host))
-        return
+    compute_node = match[0]
+
+    # IF skip_disabled_compute_nodes == True . skip disabled nodes.
+    # IF skip_disabled_compute_nodes == False. work on disabled nodes.
+    if SKIP_DISABLED_COMPUTE_NODES:
+        if compute_node.state != "up" or compute_node.status != "enabled":
+            log_event(logger, WARNING,
+                      "[{}][compute node is not UP or enabled]"
+                      .format(host))
+            log_event(logger, INFO, "[{}][skiping compute node]".format(host))
+            return
 
     try:
         disable_compute_node(region, host, logger)
@@ -775,7 +778,7 @@ def host_migration(region, cloud, nc, host, logger, args):
             log_event(logger, INFO,
                       "[{}][reboot FALSE option provided]".format(host))
             log_event(logger, INFO, "[{}][skip reboot]".format(host))
-            
+
     else:
         # check if skip_shutdown_vms option provided
         if SKIP_SHUTDOWN_VMS:
@@ -1086,6 +1089,22 @@ def config_file_execution(args):
             except Exception:
                 ROGER_ENABLE = True
 
+            # skip disabled nodes
+            global SKIP_DISABLED_COMPUTE_NODES
+            try:
+                skip_disabled_compute_nodes = config[cell]['skip_disabled_compute_nodes']\
+                    .lower().strip()
+                if skip_disabled_compute_nodes == 'true':
+                    SKIP_DISABLED_COMPUTE_NODES = True
+                elif skip_disabled_compute_nodes == 'false':
+                    SKIP_DISABLED_COMPUTE_NODES = False
+                else:
+                    msg = "skip_disabled_compute_nodes only supports true/false."
+                    " {} provided".format(roger_enable)
+                    log_event(logger, ERROR, msg)
+            except Exception:
+                SKIP_DISABLED_COMPUTE_NODES = True
+
             # region
             # TODO: to be replaced by cloud whe all code is refactored
             try:
@@ -1183,6 +1202,10 @@ def main(args=None):
                         action='store_true',
                         help='do not cold migrate instances if they are in'
                         'shutdown state')
+    parser.add_argument('--skip-disabled-compute-nodes',
+                        dest='skip_disabled_compute_nodes',
+                        type=lambda x: bool(strtobool(x)),
+                        help='perform migration on disabled node true/false')
 
     args = parser.parse_args()
 
@@ -1210,6 +1233,11 @@ def main(args=None):
     global SKIP_SHUTDOWN_VMS
     if args.skip_shutdown_vms:
         SKIP_SHUTDOWN_VMS = True
+
+    # skip_disabled_compute_nodes
+    global SKIP_DISABLED_COMPUTE_NODES
+    if args.skip_disabled_compute_nodes is not None:
+        SKIP_DISABLED_COMPUTE_NODES = args.skip_disabled_compute_nodes
 
     if args.hosts:
         cli_execution(args)
