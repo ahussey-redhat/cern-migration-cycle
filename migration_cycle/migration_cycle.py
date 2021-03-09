@@ -75,7 +75,6 @@ def log_event(logger, level, msg):
         logger.error("invalid log level provided.")
 
 
-
 def ping_instance(hostname, logger):
     '''ping instance hostname'''
 
@@ -92,7 +91,51 @@ def ping_instance(hostname, logger):
     return True
 
 
-def probe_instance_availability(hostname, interval, logger):
+def get_migration_id(cloud, instance_uuid, logger):
+    """returns migration id of on-going migration instance"""
+    nc = init_nova_client(cloud, logger)
+    migration_id = None
+    try:
+        migration_list = nc.migrations.list(instance_uuid=instance_uuid)
+    except Exception:
+        log_event(logger, ERROR, "[failed to get migration id of instance {}"
+                  .format(instance_uuid))
+        return migration_id
+    for migration in migration_list:
+        if migration.status != 'completed' or migration.status != 'error':
+            migration_id = migration.id
+            break
+    return migration_id
+
+
+def get_instance_from_hostname(cloud, hostname, logger):
+    """return instance from a provided hostname"""
+    nc = init_nova_client(cloud, logger)
+    search_opts = {'all_tenants': True, 'hostname': hostname}
+    try:
+        instance = nc.servers.list(search_opts=search_opts)
+    except Exception as e:
+        logger.error("[{}][error in retrieving instance][{}]"
+                     .format(hostname, e))
+        raise e
+    return instance[0]
+
+
+def abort_live_migration(cloud, hostname, logger):
+    """aborts on-going live migration"""
+    instance = get_instance_from_hostname(cloud, hostname, logger)
+    migration_id = get_migration_id(cloud, instance, logger)
+    nc = init_nova_client(cloud, logger)
+    try:
+        nc.server_migrations.live_migration_abort(instance, migration_id)
+        log_event(logger, INFO, "[{}][live migration aborted]"
+                  .format(hostname))
+    except Exception as e:
+        log_event(logger, ERROR, "[{}][failed to abort live migration][{}]"
+                  .format(hostname, e))
+
+
+def probe_instance_availability(cloud, hostname, interval, logger):
     '''probes the instance availability (ping) during
        an interval of time (seconds).'''
 
@@ -104,8 +147,7 @@ def probe_instance_availability(hostname, interval, logger):
         else:
             unavailable_counter = 0
         if unavailable_counter > PING_UNAVAILABLE:
-            #ABORT
-            pass
+            abort_live_migration(cloud, hostname, logger)
         time.sleep(PING_FREQUENCY)
 
 
@@ -123,7 +165,6 @@ def get_instance_from_uuid(cloud, instance_id, logger):
 
 
 def live_migration(cloud, instance, compute_node, logger):
-    """performs live-migration operations on provided instance"""
     # start time
     start_time = time.time()
 
@@ -158,7 +199,7 @@ def live_migration(cloud, instance, compute_node, logger):
 
     increment = 0
     while MAX_MIGRATION_TIMEOUT > increment:
-        probe_instance_availability(instance.name, SLEEP_TIME, logger)
+        probe_instance_availability(cloud, instance.name, SLEEP_TIME, logger)
 
         # get updated server instance
         instance = get_instance_from_uuid(cloud, instance.id, logger)
@@ -166,9 +207,6 @@ def live_migration(cloud, instance, compute_node, logger):
             return False
         # get instance host
         ins_dict = instance.to_dict()
-
-        # ping instance during the whole duration of migration
-        ping_instance(instance.name, logger)
 
         # check ERROR state of VM
         if ins_dict['status'] == "ERROR":
