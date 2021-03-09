@@ -650,13 +650,40 @@ def enable_compute_node(nova_client, compute_node, logger):
         raise e
 
 
-def enable_disable_alarm(host, operation, logger):
-    cmd = "roger update " + host + " --all_alarms " + operation
-    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-    output, errors = process.communicate()
-    if process.returncode == 0:
+def execute_cmd(cmd, logger):
+    with open(os.devnull, 'w') as DEVNULL:
+        try:
+            subprocess.check_call(cmd,
+                                  stdout=DEVNULL,
+                                  stderr=DEVNULL)
+            log_event(logger, DEBUG,
+                      "{} executed".format(cmd))
+        except Exception as e:
+            log_event(logger, ERROR,
+                      "failed to execute cmd {}. ERROR {}"
+                      .format(cmd, e))
+            return False
+    return True
+
+
+def enable_alarm(host, logger):
+    cmd = "roger update " + host + " --all_alarms " + "true"
+    if execute_cmd(cmd):
+        log_event(logger, INFO, "[{}][alarm enabled]".format(host))
         return True
     else:
+        log_event(logger, ERROR, "[{}][failed to enable alarm]".format(host))
+        return False
+
+
+def disable_alarm(host, logger):
+    cmd = "roger update " + host + " --all_alarms " + "false"
+    if execute_cmd(cmd):
+        log_event(logger, INFO, "[{}][roger alarm disabled]".format(host))
+        return True
+    else:
+        log_event(logger, ERROR, "[{}][failed to disable roger alarm]"
+                  .format(host))
         return False
 
 
@@ -850,18 +877,14 @@ def host_migration(region, nc, host, logger, args):
         return
 
     # change GNI alarm status via Roger
-    # disable alarm
-    if enable_disable_alarm(host, "false", logger):
-        log_event(logger, INFO, "[{}][roger alarm disabled]".format(host))
-    else:
-        log_event(logger, ERROR, "[{}][failed to disable roger alarm]")
+    # if disable alarm fails revert compute status
+    if not disable_alarm(host, logger):
         # revert compute status(enable)
         try:
             enable_compute_node(nc, host, logger)
         except:
             log_event(logger, INFO, "[{}][skiping node]".format(host))
             return
-
         log_event(logger, INFO, "[{}][skiping node]".format(host))
         return
 
@@ -912,8 +935,7 @@ def host_migration(region, nc, host, logger, args):
     if ROGER_ENABLE:
         # change GNI alarm status via Roger
         # enable alarm
-        if enable_disable_alarm(host, "true", logger):
-            log_event(logger, INFO, "[{}][alarm enabled]".format(host))
+        enable_alarm(host, logger)
     else:
         log_event(logger, INFO,
                   "[{}][roger_enable FALSE option provided]".format(host))
