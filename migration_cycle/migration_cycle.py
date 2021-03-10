@@ -109,36 +109,51 @@ def probe_instance_availability(hostname, interval, logger):
         time.sleep(PING_FREQUENCY)
 
 
-def live_migration(cloudclient, server, hypervisor, logger):
+def get_instance_from_uuid(cloud, instance_id, logger):
+    # make nova client
+    nc = init_nova_client(cloud, logger)
+    try:
+        instance = nc.servers.get(instance_id)
+    except Exception as e:
+        log_event(logger, ERROR,
+                  "[{}][failed to get server instance][{}]"
+                  .format(instance_id, e))
+        return None
+    return instance
+
+
+def live_migration(cloud, instance, compute_node, logger):
+    """performs live-migration operations on provided instance"""
     # start time
     start_time = time.time()
 
     log_event(logger, INFO,
-              "[{}][instance-uuid: {}]".format(server.name, server.id))
+              "[{}][instance-uuid: {}]".format(instance.name, instance.id))
     # check if volume is attached to an instance
-    if server._info["image"]:
+    if instance._info["image"]:
         # if image is attached that means not booted from volume
         log_event(logger, INFO,
-                  "[{}][booted from image]".format(server.name))
+                  "[{}][booted from image]".format(instance.name))
         try:
-            server.live_migrate(host=None, block_migration=True)
+            instance.live_migrate(host=None, block_migration=True)
             log_event(logger, INFO, "[{}][live migration][started]"
-                      .format(server.name))
+                      .format(instance.name))
         except Exception as e:
             log_event(logger, ERROR,
                       "[{}][error during block live migration][{}]"
-                      .format(server.name, e))
+                      .format(instance.name, e))
             return False
     else:
         # volume is attached set block migration to False
-        log_event(logger, INFO, "[{}][booted from volume]".format(server.name))
+        log_event(logger, INFO, "[{}][booted from volume]"
+                  .format(instance.name))
         try:
-            server.live_migrate(host=None, block_migration=False)
+            instance.live_migrate(host=None, block_migration=False)
             log_event(logger, INFO, "[{}][live migration][started]"
-                      .format(server.name))
+                      .format(instance.name))
         except Exception as e:
             log_event(logger, ERROR, "[{}][error during live migration][{}]"
-                      .format(server.name, e))
+                      .format(instance.name, e))
             return False
 
     increment = 0
@@ -146,29 +161,25 @@ def live_migration(cloudclient, server, hypervisor, logger):
         probe_instance_availability(hypervisor, SLEEP_TIME, logger)
 
         # get updated server instance
-        try:
-            ins = cloudclient.get_server(server.id)
-        except Exception as e:
-            log_event(logger, ERROR,
-                      "[{}][failed to get server instance][{}]"
-                      .format(server.name, e))
+        instance = get_instance_from_uuid(cloud, instance.id, logger)
+        if instance is None:
             return False
         # get instance host
-        ins_dict = ins.to_dict()
+        ins_dict = instance.to_dict()
 
         # ping instance during the whole duration of migration
-        ping_instance(server.name, logger)
+        ping_instance(instance.name, logger)
 
         # check ERROR state of VM
         if ins_dict['status'] == "ERROR":
             log_event(logger, INFO,
                       "[{}][VM migration failed. VM now in ERROR state]"
-                      .format(server.name))
+                      .format(instance.name))
             return False
 
         # check if live migration cmd was even successful
         if ins_dict['status'] != "MIGRATING":
-            if hypervisor in  \
+            if compute_node in  \
                 ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname'] \
                     and ins_dict['status'] == "ACTIVE":
                 log_event(logger, ERROR, "[{}][live migration failed]"
@@ -176,16 +187,16 @@ def live_migration(cloudclient, server, hypervisor, logger):
                 return False
 
         # check if host and status has changed
-        if hypervisor not in \
+        if compute_node not in \
             ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname'] \
                 and ins_dict['status'] == "ACTIVE":
             log_event(logger, INFO,
                       "[{}][migrated to New Host][{}]".format(
-                          server.name,
+                          instance.name,
                           ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname']))
             log_event(logger, INFO,
                       "[{}][state][{}]"
-                      .format(server.name, ins_dict['status']))
+                      .format(instance.name, ins_dict['status']))
             log_event(logger, INFO,
                       "[{}][live migration duration][{}]"
                       .format(server.name, round(time.time() - start_time, 2)))
@@ -197,22 +208,22 @@ def live_migration(cloudclient, server, hypervisor, logger):
     return False
 
 
-def cold_migration(cloudclient, server, hypervisor, logger):
+def cold_migration(cloud, instance, compute_node, logger):
     # start time
     start = time.time()
 
-    log_event(logger, INFO, "[{}] id {}".format(server.name, server.id))
+    log_event(logger, INFO, "[{}][id {}]".format(instance.name, instance.id))
     log_event(logger, INFO,
-              "[{}][cold migration][started]".format(server.name))
+              "[{}][cold migration][started]".format(instance.name))
     try:
-        server.migrate()
+        instance.migrate()
         log_event(logger, INFO,
                   "[{}][VM migration executed][wait for VM state change]"
-                  .format(server.name))
+                  .format(instance.name))
         time.sleep(SLEEP_TIME)
     except Exception as e:
         log_event(logger, ERROR, "[{}][error during cold migration][{}]"
-                  .format(server.name, e))
+                  .format(instance.name, e))
         return False
 
     # cold migration checks
@@ -220,16 +231,11 @@ def cold_migration(cloudclient, server, hypervisor, logger):
     while MAX_MIGRATION_TIMEOUT > increment:
         increment = increment + SLEEP_TIME
         time.sleep(SLEEP_TIME)
-        # logger.info("{} Cold migration progress : {}s"
-        #            .format(server.name, INCREMENT))
         # get updated server instance
-        try:
-            ins = cloudclient.get_server(server.id)
-            ins_dict = ins.to_dict()
-        except Exception as e:
-            log_event(logger, ERROR, "[{}][failed to get server instance][{}]"
-                      .format(ins_dict['name'], e))
+        instance = get_instance_from_uuid(cloud, instance.id, logger)
+        if instance is None:
             return False
+        ins_dict = instance.to_dict()
 
         # check if the state has changed to Error
         if ins_dict['status'] == "ERROR":
@@ -245,10 +251,10 @@ def cold_migration(cloudclient, server, hypervisor, logger):
 
         # next wait for RESIZE to VERIFY_RESIZE
         if ins_dict['status'] == "RESIZE" \
-            and (ins_dict["OS-EXT-STS:task_state"] == "RESIZE_PREP" or
-                 ins_dict["OS-EXT-STS:task_state"] == "RESIZE_MIGRATING" or
-                 ins_dict["OS-EXT-STS:task_state"] == "RESIZE_MIGRATED" or
-                 ins_dict["OS-EXT-STS:task_state"] == "RESIZE_FINISH"):
+            and (ins_dict["OS-EXT-STS:task_state"] == "RESIZE_PREP"
+                 or ins_dict["OS-EXT-STS:task_state"] == "RESIZE_MIGRATING"
+                 or ins_dict["OS-EXT-STS:task_state"] == "RESIZE_MIGRATED"
+                 or ins_dict["OS-EXT-STS:task_state"] == "RESIZE_FINISH"):
             continue
 
         # if state is VERIFY_RESIZE exit the loop
@@ -259,37 +265,34 @@ def cold_migration(cloudclient, server, hypervisor, logger):
     # perform server.confirm_resize()
     if ins_dict['status'] == "VERIFY_RESIZE":
         try:
-            ins.confirm_resize()
+            instance.confirm_resize()
         except Exception as e:
             log_event(logger, ERROR,
                       "[{}][confirm resize operation failed][{}]"
-                      .format(ins.name, e))
+                      .format(instance.name, e))
             return False
 
     # sleep & wait for change
     time.sleep(SLEEP_TIME)
     # get updated server instance
-    try:
-        ins = cloudclient.get_server(server.id)
-        ins_dict = ins.to_dict()
-    except Exception as e:
-        log_event(logger, ERROR, "[{}][failed to get server instance][{}]"
-                  .format(ins_dict['name'], e))
+    instance = get_instance_from_uuid(cloud, instance.id, logger)
+    if instance is None:
         return False
+    ins_dict = instance.to_dict()
     # Check if host has changed & VM state is back to SHUTOFF or ACTIVE
-    if hypervisor not in \
+    if compute_node not in \
         ins_dict["OS-EXT-SRV-ATTR:hypervisor_hostname"] \
             and (ins_dict['status'] == "SHUTOFF" or
                  ins_dict['status'] == "ACTIVE"):
         log_event(logger, INFO, "[{}][status][{}]"
-                  .format(server.name, ins_dict['status']))
+                  .format(instance.name, ins_dict['status']))
 
         log_event(logger, INFO, "[{}][migrated to compute node][{}]"
-                  .format(server.name, ins_dict[
-                            'OS-EXT-SRV-ATTR:hypervisor_hostname']))
+                  .format(instance.name, ins_dict[
+                          'OS-EXT-SRV-ATTR:hypervisor_hostname']))
 
         log_event(logger, INFO, "[{}][migration duration][{}]"
-                  .format(server.name, round(time.time() - start, 2)))
+                  .format(instance.name, round(time.time() - start, 2)))
 
         log_event(logger, INFO, "[{}][cold migration][finished]"
                   .format(ins_dict['name']))
@@ -382,16 +385,18 @@ def vm_list(cloudclient, hypervisor, logger):
     return servers_set, servers_name
 
 
-def vms_migration(cloudclient, hypervisor, logger):
+def vms_migration(cloud, compute_node, logger):
     # List of servers
-    servers_set, servers_name = vm_list(cloudclient, hypervisor, logger)
-    log_event(logger, INFO, "[{}][VMs] {}".format(hypervisor, servers_name))
+    servers = get_instances(cloud, compute_node, logger)
+    servers_name = [server.name for server in servers]
+    log_event(logger, INFO, "[{}][VMs] {}"
+              .format(compute_node, servers_name))
 
     # get total servers
-    server_count = len(servers_set)
+    server_count = len(servers)
     progress = 0
-    if servers_set:
-        for server in servers_set:
+    if servers:
+        for server in servers:
             # progress meter
             progress += 1
             log_event(logger, INFO, "[working on {}. ({}/{}) VM]"
@@ -399,16 +404,7 @@ def vms_migration(cloudclient, hypervisor, logger):
             # get updated VM state each time
             # because migration takes time and
             # other VM state might change in mean time
-            try:
-                u_server = cloudclient.get_server(server.id)
-            except Exception as e:
-                log_event(logger, ERROR,
-                          "[{}][error getting compute node instance][{}]"
-                          .format(server, e))
-                log_event(logger, ERROR,
-                          "[{}][Not migrating the node instances][{}]")
-                return
-            # check if server still exists
+            u_server = get_instance_from_uuid(cloud, server.id, logger)
             if u_server is None:
                 log_event(logger, ERROR,
                           "[{}][no longer exists/found]".format(server.name))
@@ -423,9 +419,9 @@ def vms_migration(cloudclient, hypervisor, logger):
                 if u_server.status == "ACTIVE":
                     # ping before live migration starts
                     ping_instance(u_server.name, logger)
-                    res = live_migration(cloudclient,
+                    res = live_migration(cloud,
                                          u_server,
-                                         hypervisor,
+                                         compute_node,
                                          logger)
                     # ping instance after migration success
                     if res:
@@ -443,9 +439,9 @@ def vms_migration(cloudclient, hypervisor, logger):
                         res = False
                     else:
                         # do cold migration
-                        res = cold_migration(cloudclient,
+                        res = cold_migration(cloud,
                                              u_server,
-                                             hypervisor,
+                                             compute_node,
                                              logger)
                 else:
                     msg = "[{}][failed to migrate]\
@@ -469,7 +465,7 @@ def vms_migration(cloudclient, hypervisor, logger):
                           .format(u_server.name))
     else:
         log_event(logger, INFO,
-                  "[{}][NO VMs in the compute node]".format(hypervisor))
+                  "[{}][NO VMs in the compute node]".format(compute_node))
 
 
 def setup_logger(name, log_file, level=logging.INFO):
@@ -648,7 +644,7 @@ def reboot_ironic(nc, host, reboot_type, logger):
     return False
 
 
-def cell_migration(region, cloud, nc, hosts, cell_name, logger, args):
+def cell_migration(region, nc, hosts, cell_name, logger, args):
     count = 0
     cell_host_count = len(hosts)
     while hosts:
@@ -663,10 +659,10 @@ def cell_migration(region, cloud, nc, hosts, cell_name, logger, args):
         count += 1
         log_event(logger, INFO, "[working on compute node [{}]. ({}/{})]"
                   .format(host, count, cell_host_count))
-        host_migration(region, cloud, nc, host, logger, args)
+        host_migration(region, nc, host, logger, args)
 
 
-def reboot_manager(cloud, nc, host, logger, args):
+def reboot_manager(nc, host, logger, args):
     # we need list for ssh_uptime
     # get uptime and store it
     old_uptime = ssh_uptime([host], logger)
@@ -727,7 +723,7 @@ def reboot_manager(cloud, nc, host, logger, args):
                           "[{}][reboot cmd failed]".format(host))
 
 
-def host_migration(region, cloud, nc, host, logger, args):
+def host_migration(region, nc, host, logger, args):
 
     # get state and status of hypervisor
     # if state == up && status == enabled PROCEED
@@ -767,13 +763,13 @@ def host_migration(region, cloud, nc, host, logger, args):
         log_event(logger, INFO, "[{}][skiping node]".format(host))
         return
 
-    vms_migration(cloud, host, logger)
+    vms_migration(region, host, logger)
 
     # check if migration was successful
     # if there are still vms left don't reboot
     if is_compute_node_empty(region, host, logger):
         if REBOOT:
-            reboot_manager(cloud, nc, host, logger, args)
+            reboot_manager(nc, host, logger, args)
         else:
             log_event(logger, INFO,
                       "[{}][reboot FALSE option provided]".format(host))
@@ -790,7 +786,7 @@ def host_migration(region, cloud, nc, host, logger, args):
                     logger.info("[{}][no_reboot option provided]"
                                 .format(host))
                 else:
-                    reboot_manager(cloud, nc, host, logger, args)
+                    reboot_manager(nc, host, logger, args)
             else:
                 logger.info("[{}][vms not in shutoff state. can't reboot]"
                             .format(host))
@@ -1022,11 +1018,8 @@ def config_file_execution(args):
             included_nodes = [x.strip() for x in included_nodes]
             excluded_nodes = [x.strip() for x in excluded_nodes]
 
-            # make cloud client
-            cloud = make_cloud_client()
-
             # make nova client
-            nc = make_nova_client(cloud, logger)
+            nc = init_nova_client(region, logger)
 
             # get hosts from cell using aggregate
             try:
@@ -1130,7 +1123,7 @@ def config_file_execution(args):
 
             # perform migration operation
             thread = threading.Thread(target=cell_migration,
-                                      args=(region, cloud, nc, hv_list,
+                                      args=(region, nc, hv_list,
                                             config[cell]['name'],
                                             logger, args))
             thread.start()
@@ -1161,7 +1154,7 @@ def cli_execution(args):
 
         # make nova client
         nc = make_nova_client(cloud, logger)
-        host_migration(region, cloud, nc, host, logger, args)
+        host_migration(region, nc, host, logger, args)
 
 
 def main(args=None):
