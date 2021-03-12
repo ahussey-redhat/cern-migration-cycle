@@ -73,14 +73,19 @@ def log_event(logger, level, msg):
 
 
 def ping_instance(hostname, logger):
-    ''' ping instances and logs. IP or hostname accepted'''
-    command = ['ping', '-c', '1', hostname]
-    if subprocess.call(command) == 0:
-        logger.info("[{} is alive]".format(hostname))
-        return True
-    else:
-        logger.info("[{} is unreachable]".format(hostname))
-        return False
+    '''ping instance hostname'''
+
+    cmd = ['ping', '-c', '1', hostname]
+    with open(os.devnull, 'w') as DEVNULL:
+        try:
+            subprocess.check_call(cmd,
+                                  stdout=DEVNULL,
+                                  stderr=DEVNULL)
+            logger.debug("[{} is alive]".format(hostname))
+        except:
+            logger.info("[{} is unreachable]".format(hostname))
+            return False
+    return True
 
 
 def live_migration(cloudclient, server, hypervisor, logger):
