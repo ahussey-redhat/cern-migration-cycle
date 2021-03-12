@@ -41,6 +41,9 @@ COMPUTE_ENABLE = True
 REBOOT = True
 DISABLED_REASON = None
 
+PING_UNAVAILABLE = 5
+PING_FREQUENCY = 2
+
 
 def send_mail(mail_body):
     mail_to = ','.join(MAIL_RECEIPENTS)
@@ -88,9 +91,26 @@ def ping_instance(hostname, logger):
     return True
 
 
+def probe_instance_availability(hostname, interval, logger):
+    '''probes the instance availability (ping) during
+       an interval of time (seconds).'''
+
+    start_time = time.time()
+    unavailable_counter = 0
+    while (time.time() < start_time + interval):
+        if not ping_instance(hostname, logger):
+            unavailable_counter += 1
+        else:
+            unavailable_counter = 0
+        if unavailable_counter > PING_UNAVAILABLE:
+            #ABORT
+            pass
+        time.sleep(PING_FREQUENCY)
+
+
 def live_migration(cloudclient, server, hypervisor, logger):
     # start time
-    start = time.time()
+    start_time = time.time()
 
     log_event(logger, INFO,
               "[{}][instance-uuid: {}]".format(server.name, server.id))
@@ -122,10 +142,7 @@ def live_migration(cloudclient, server, hypervisor, logger):
 
     increment = 0
     while MAX_MIGRATION_TIMEOUT > increment:
-        increment = increment + SLEEP_TIME
-        time.sleep(SLEEP_TIME)
-        # logger.info("{} Live migration progress : {}s"
-        #            .format(server.name, INCREMENT))
+        probe_instance_availability(hostname, SLEEP_TIME, logger)
 
         # get updated server instance
         try:
@@ -170,11 +187,12 @@ def live_migration(cloudclient, server, hypervisor, logger):
                       .format(server.name, ins_dict['status']))
             log_event(logger, INFO,
                       "[{}][live migration duration][{}]"
-                      .format(server.name, round(time.time() - start, 2)))
+                      .format(server.name, round(time.time() - start_time, 2)))
             log_event(logger, INFO,
                       "[{}][live migration][finished]"
                       .format(ins_dict['name']))
             return True
+        increment = time.time() - start_time
     return False
 
 
