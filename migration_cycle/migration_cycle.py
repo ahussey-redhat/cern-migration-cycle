@@ -143,7 +143,7 @@ def live_migration(cloudclient, server, hypervisor, logger):
 
     increment = 0
     while MAX_MIGRATION_TIMEOUT > increment:
-        probe_instance_availability(hostname, SLEEP_TIME, logger)
+        probe_instance_availability(hypervisor, SLEEP_TIME, logger)
 
         # get updated server instance
         try:
