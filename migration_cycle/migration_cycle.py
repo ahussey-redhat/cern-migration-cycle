@@ -158,7 +158,7 @@ def live_migration(cloud, instance, compute_node, logger):
 
     increment = 0
     while MAX_MIGRATION_TIMEOUT > increment:
-        probe_instance_availability(hypervisor, SLEEP_TIME, logger)
+        probe_instance_availability(instance.name, SLEEP_TIME, logger)
 
         # get updated server instance
         instance = get_instance_from_uuid(cloud, instance.id, logger)
@@ -199,7 +199,7 @@ def live_migration(cloud, instance, compute_node, logger):
                       .format(instance.name, ins_dict['status']))
             log_event(logger, INFO,
                       "[{}][live migration duration][{}]"
-                      .format(server.name, round(time.time() - start_time, 2)))
+                      .format(instance.name, round(time.time() - start_time, 2)))
             log_event(logger, INFO,
                       "[{}][live migration][finished]"
                       .format(ins_dict['name']))
