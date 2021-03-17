@@ -72,5 +72,6 @@ python36:
       gpgcheck=0
       priority=1
       EOF
-    - yum-config-manager --save --setopt=epel.exclude=python2-pyngus*
+    - "[[ $(rpm --eval '%{centos_ver}') == '7' ]] && yum-config-manager --save --setopt=epel.exclude=python2-pyngus*"
+    - "[[ $(rpm --eval '%{centos_ver}') == '7' ]] && yum-config-manager --save --setopt=updates.exclude=python-cryptography"
     - yum install -y --nogpgcheck `ls koji/*${DIST}.noarch.rpm koji/*${DIST}.x86_64.rpm`
