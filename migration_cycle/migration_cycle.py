@@ -91,23 +91,6 @@ def ping_instance(hostname, logger):
     return True
 
 
-def get_migration_id(cloud, instance_uuid, logger):
-    """returns migration id of on-going migration instance"""
-    nc = init_nova_client(cloud, logger)
-    migration_id = None
-    try:
-        migration_list = nc.migrations.list(instance_uuid=instance_uuid)
-    except Exception:
-        log_event(logger, ERROR, "[failed to get migration id of instance {}"
-                  .format(instance_uuid))
-        return migration_id
-    for migration in migration_list:
-        if migration.status != 'completed' or migration.status != 'error':
-            migration_id = migration.id
-            break
-    return migration_id
-
-
 def get_instance_from_hostname(cloud, hostname, logger):
     """return instance from a provided hostname"""
     nc = init_nova_client(cloud, logger)
@@ -164,6 +147,66 @@ def get_instance_from_uuid(cloud, instance_id, logger):
     return instance
 
 
+def get_migration_id(cloud, instance_uuid, logger):
+    """returns migration id of on-going migration instance"""
+    nc = init_nova_client(cloud, logger)
+    migration_id = None
+    try:
+        migration_list = nc.migrations.list(instance_uuid=instance_uuid)
+    except Exception:
+        log_event(logger, ERROR, "[failed to get migration id of instance {}"
+                  .format(instance_uuid))
+        return migration_id
+    for migration in migration_list:
+        if (migration.status.lower() != 'completed'
+           or migration.status.lower() != 'error'):
+            migration_id = migration.id
+            break
+    return migration_id
+
+
+def get_migration_status(cloud, instance_uuid, logger):
+    """returns migration status
+    accepted->queued->preparing->running->completed->error"""
+    nc = init_nova_client(cloud, logger)
+    migration_status = None
+    try:
+        migration_list = nc.migrations.list(instance_uuid=instance_uuid)
+    except Exception:
+        log_event(logger, ERROR, "[failed to get migration id of instance {}"
+                  .format(instance_uuid))
+        return migration_status
+    for migration in migration_list:
+        if (migration.status.lower() != 'completed'
+           or migration.status.lower() != 'error'):
+            migration_status = migration.status
+            break
+    return migration_status.lower()
+
+
+def get_migration_disk_size(cloud, instance_uuid, logger):
+    """returns migration disk size of the provided instance"""
+    # get migration id of instance
+    migration_id = get_migration_id(cloud, instance_uuid, logger)
+    disk_size = 0
+    if migration_id is None:
+        return disk_size
+    instance = get_instance_from_uuid(cloud, instance_uuid, logger)
+    nc = init_nova_client(cloud, logger)
+    try:
+        migration_info = nc.server_migrations.get(instance_uuid, migration_id)
+        disk_size = migration_info.disk_total_bytes
+        if disk_size is None:
+            disk_size = 0
+    except Exception:
+        log_event(logger, ERROR, "[failed to get disk size of instance {}"
+                  .format(instance_uuid))
+    log_event(logger, INFO, "[{}][disk_total_bytes : {}]"
+              .format(instance.name, disk_size))
+
+    return disk_size
+
+
 def live_migration(cloud, instance, compute_node, logger):
     # start time
     start_time = time.time()
@@ -197,6 +240,9 @@ def live_migration(cloud, instance, compute_node, logger):
                       .format(instance.name, e))
             return False
 
+    disk_size = None
+    migration_status = None
+
     increment = 0
     while MAX_MIGRATION_TIMEOUT > increment:
         probe_instance_availability(cloud, instance.name, SLEEP_TIME, logger)
@@ -207,6 +253,16 @@ def live_migration(cloud, instance, compute_node, logger):
             return False
         # get instance host
         ins_dict = instance.to_dict()
+
+        # get migration status
+        if migration_status != 'running':
+            migration_status = get_migration_status(cloud, instance.id, logger)
+
+        # if status == running get the disk info
+        if migration_status == 'running' and disk_size is None:
+            disk_size = get_migration_disk_size(cloud, instance.id, logger)
+            # convert bytes to MB
+            disk_size = disk_size / (1024 ** 2)
 
         # check ERROR state of VM
         if ins_dict['status'] == "ERROR":
@@ -241,6 +297,10 @@ def live_migration(cloud, instance, compute_node, logger):
             log_event(logger, INFO,
                       "[{}][live migration][finished]"
                       .format(ins_dict['name']))
+            transfer_rate = disk_size / round(time.time() - start_time, 2)
+            log_event(logger, INFO,
+                      "[{}][live migration transfer rate {} MB/s]"
+                      .format(instance.name, transfer_rate))
             return True
         increment = time.time() - start_time
     return False
