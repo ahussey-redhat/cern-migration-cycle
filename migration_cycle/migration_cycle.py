@@ -159,7 +159,7 @@ def get_migration_id(cloud, instance_uuid, logger):
         return migration_id
     for migration in migration_list:
         if (migration.status.lower() != 'completed'
-           or migration.status.lower() != 'error'):
+           and migration.status.lower() != 'error'):
             migration_id = migration.id
             break
     return migration_id
@@ -178,7 +178,7 @@ def get_migration_status(cloud, instance_uuid, logger):
         return migration_status
     for migration in migration_list:
         if (migration.status.lower() != 'completed'
-           or migration.status.lower() != 'error'):
+           and migration.status.lower() != 'error'):
             migration_status = migration.status
             break
     return migration_status.lower()
@@ -516,7 +516,11 @@ def vms_migration(cloud, compute_node, logger):
             if server_dict["OS-EXT-STS:task_state"] is None:
                 if u_server.status == "ACTIVE":
                     # ping before live migration starts
-                    ping_instance(u_server.name, logger)
+                    # if unreachable from beginning. skip it
+                    if not ping_instance(u_server.name, logger):
+                        log_event(logger, INFO, "[{} unreachable. skipping]"
+                                  .format(u_server))
+                        continue
                     res = live_migration(cloud,
                                          u_server,
                                          compute_node,
