@@ -4,8 +4,9 @@ import argparse
 import configparser
 import logging
 import os
+import smtplib
+from email.mime.text import MIMEText
 from ccitools.utils.cloud import CloudRegionClient
-from ccitools.cmd.sendmail import SendmailCMD
 from datetime import datetime
 from distutils.util import strtobool
 import subprocess
@@ -46,18 +47,15 @@ PING_UNAVAILABLE = 5
 PING_FREQUENCY = 2
 
 
-def send_mail(mail_body):
-    mail_to = ','.join(MAIL_RECEIPENTS)
-    mail_subject = 'migration cycle service failed'
+def send_email(mail_body):
+    msg = MIMEText(mail_body)   
+    msg['Subject'] = 'migration cycle service failed'
     mail_from = 'noreply-migration-service@cern.ch'
-    smtp_server = 'localhost'
-    mail_cc = ''
-    mail_bcc = ''
-    sendmail = SendmailCMD()
-    sendmail.sendmail(mail_to=mail_to, mail_subject=mail_subject,
-                      mail_from=mail_from, smtp_server=smtp_server,
-                      sendmail=True, mail_cc=mail_cc, mail_bcc=mail_bcc,
-                      mail_content_type='', mail_body=mail_body)
+    msg['From'] = mail_from
+    msg['To'] = ",".join(MAIL_RECEIPENTS)
+    sendmail_obj = smtplib.SMTP('localhost')
+    sendmail_obj.sendmail(mail_from, MAIL_RECEIPENTS, msg.as_string())
+    sendmail_obj.quit()
 
 
 def log_event(logger, level, msg):
@@ -70,7 +68,7 @@ def log_event(logger, level, msg):
     elif level == 'error':
         logger.error(msg)
         if MAIL_RECEIPENTS:
-            send_mail(msg)
+            send_email(msg)
     else:
         logger.error("invalid log level provided.")
 
