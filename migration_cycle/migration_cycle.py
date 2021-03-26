@@ -665,9 +665,9 @@ def execute_cmd(cmd, logger):
 
 
 def enable_alarm(host, logger):
-    cmd = "roger update " + host + " --all_alarms " + "true"
-    if execute_cmd(cmd):
-        log_event(logger, INFO, "[{}][alarm enabled]".format(host))
+    cmd = ["/usr/bin/roger", "update", host, "--all_alarms", "true"]
+    if execute_cmd(cmd, logger):
+        log_event(logger, INFO, "[{}][roger alarm enabled]".format(host))
         return True
     else:
         log_event(logger, ERROR, "[{}][failed to enable alarm]".format(host))
@@ -675,8 +675,8 @@ def enable_alarm(host, logger):
 
 
 def disable_alarm(host, logger):
-    cmd = "roger update " + host + " --all_alarms " + "false"
-    if execute_cmd(cmd):
+    cmd = ["/usr/bin/roger", "update", host, "--all_alarms", "false"]
+    if execute_cmd(cmd, logger):
         log_event(logger, INFO, "[{}][roger alarm disabled]".format(host))
         return True
     else:
