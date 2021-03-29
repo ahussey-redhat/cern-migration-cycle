@@ -12,7 +12,7 @@
 # End of macros for py2/py3 compatibility
 
 Name:           migration-cycle
-Version:        0.1.1
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
