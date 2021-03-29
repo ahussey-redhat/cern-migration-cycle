@@ -1054,10 +1054,10 @@ def ssh_uptime(hosts, logger):
 def make_hv_list(result, included_nodes, excluded_nodes):
     hosts = result.hosts
 
-    # format the lists remove u''
-    if included_nodes == [u'']:
+    # format the lists
+    if included_nodes == ['']:
         included_nodes = []
-    if excluded_nodes == [u'']:
+    if excluded_nodes == ['']:
         excluded_nodes = []
 
     hv_list = []
@@ -1113,6 +1113,123 @@ def init_nova_client(cloud, logger):
     return nc
 
 
+def get_included_nodes(config, logger):
+    included_nodes = ['']
+    try:
+        included_nodes = str(config['include_nodes'])
+        included_nodes = included_nodes.split(',')
+    except Exception:
+        log_event(logger, INFO, "include_nodes not defined in conf."
+                                " Use default")
+
+    # remove any whitespace
+    included_nodes = [x.strip() for x in included_nodes]
+    return included_nodes
+
+
+def get_excluded_nodes(config, logger):
+    excluded_nodes = ['']
+    try:
+        excluded_nodes = str(config['exclude_nodes'])
+        excluded_nodes = excluded_nodes.split(',')
+    except Exception:
+        log_event(logger, INFO, "exclude_nodes not defined in conf."
+                                " Use default")
+
+    # remove any whitespace
+    excluded_nodes = [x.strip() for x in excluded_nodes]
+    return excluded_nodes
+
+
+def set_reboot_config_option(config, logger):
+    global REBOOT
+    try:
+        reboot = config['reboot'].lower().strip()
+        if reboot == 'true':
+            REBOOT = True
+        elif reboot == 'false':
+            REBOOT = False
+        else:
+            msg = "reboot only takes true/false. {} provided.".format(reboot)
+            log_event(logger, ERROR, msg)
+            sys.exit()
+    except Exception:
+        REBOOT = True
+        log_event(logger, INFO, "using default. reboot True")
+
+
+def set_compute_enable_option(config, logger):
+    global COMPUTE_ENABLE
+    try:
+        compute_enable = config['compute_enable'].lower().strip()
+        if compute_enable == 'true':
+            COMPUTE_ENABLE = True
+        elif compute_enable == 'false':
+            COMPUTE_ENABLE = False
+        else:
+            msg = "compute_enable only supports true/false"\
+                " {} provided".format(compute_enable)
+            log_event(logger, ERROR, msg)
+            sys.exit()
+    except Exception:
+        COMPUTE_ENABLE = True
+        log_event(logger, INFO, "using default. compute enable True")
+
+
+def set_roger_enable_option(config, logger):
+    global ROGER_ENABLE
+    try:
+        roger_enable = config['roger_enable'].lower().strip()
+        if roger_enable == 'true':
+            ROGER_ENABLE = True
+        elif roger_enable == 'false':
+            ROGER_ENABLE = False
+        else:
+            msg = "roger_enable only supports true/false."\
+                " {} provided".format(roger_enable)
+            log_event(logger, ERROR, msg)
+    except Exception:
+        ROGER_ENABLE = True
+        log_event(logger, INFO, "using default. roger enable True")
+
+
+def set_skip_disabled_nodes_option(config, logger):
+    global SKIP_DISABLED_COMPUTE_NODES
+    try:
+        skip_disabled_compute_nodes = config['skip_disabled_compute_nodes']\
+            .lower().strip()
+        if skip_disabled_compute_nodes == 'true':
+            SKIP_DISABLED_COMPUTE_NODES = True
+        elif skip_disabled_compute_nodes == 'false':
+            SKIP_DISABLED_COMPUTE_NODES = False
+        else:
+            msg = "skip_disabled_compute_nodes only supports true/false."
+            " {} provided".format(skip_disabled_compute_nodes)
+            log_event(logger, ERROR, msg)
+    except Exception:
+        SKIP_DISABLED_COMPUTE_NODES = True
+        log_event(logger, INFO, "using default. skip disabled compute nodes"
+                                " True")
+
+
+def set_skip_shutdown_vms_option(config, logger):
+    global SKIP_SHUTDOWN_VMS
+    try:
+        skip_shutdown = config['skip_shutdown_vms'].lower().strip()
+        if skip_shutdown == 'true':
+            SKIP_SHUTDOWN_VMS = True
+        elif skip_shutdown == 'false':
+            SKIP_SHUTDOWN_VMS = False
+        else:
+            msg = "skip_shutdown_vms only support true/false."
+            " {} provided.".format(skip_shutdown)
+            log_event(logger, ERROR, msg)
+            sys.exit()
+    except Exception:
+        SKIP_SHUTDOWN_VMS = False
+        log_event(logger, INFO, "using default. skip shutdown vms False")
+
+
 def config_file_execution(args):
     # parse the config file
     config = configparser.ConfigParser()
@@ -1164,26 +1281,10 @@ def config_file_execution(args):
                       .format(cell_name))
 
             # get nodes that need to be included
-            try:
-                included_nodes = config[cell]['include_nodes']
-                included_nodes = included_nodes.split(',')
-            except Exception:
-                log_event(logger, INFO,
-                          "include_nodes not defined in conf. Use default")
-                included_nodes = [u'']
+            included_nodes = get_included_nodes(config[cell], logger)
 
             # get nodes that need to be excluded
-            try:
-                excluded_nodes = config[cell]['exclude_nodes']
-                excluded_nodes = excluded_nodes.split(',')
-            except Exception:
-                log_event(logger, INFO,
-                          "exclude_nodes not defined in conf. Use default")
-                excluded_nodes = [u'']
-
-            # remove any whitespace
-            included_nodes = [x.strip() for x in included_nodes]
-            excluded_nodes = [x.strip() for x in excluded_nodes]
+            excluded_nodes = get_excluded_nodes(config[cell], logger)
 
             # make nova client
             nc = init_nova_client(region, logger)
@@ -1201,69 +1302,16 @@ def config_file_execution(args):
             hv_list = make_hv_list(result, included_nodes, excluded_nodes)
 
             # reboot
-            global REBOOT
-            try:
-                reboot = config[cell]['reboot'].lower().strip()
-                if reboot == 'true':
-                    REBOOT = True
-                elif reboot == 'false':
-                    REBOOT = False
-                else:
-                    log_event(logger, ERROR,
-                             "reboot only takes true/false. {} provided."
-                             .format(reboot))
-                    sys.exit()
-            except Exception:
-                REBOOT = True
+            set_reboot_config_option(config[cell], logger)
 
             # compute_enable
-            global COMPUTE_ENABLE
-            try:
-                compute_enable = config[cell]['compute_enable']\
-                                         .lower().strip()
-                if compute_enable == 'true':
-                    COMPUTE_ENABLE = True
-                elif compute_enable == 'false':
-                    COMPUTE_ENABLE = False
-                else:
-                    msg = "compute_enable only supports true/false"\
-                          " {} provided".format(compute_enable)
-                    log_event(logger, ERROR, msg)
-                    sys.exit()
-            except Exception:
-                COMPUTE_ENABLE = True
-
+            set_compute_enable_option(config[cell], logger)
 
             # roger_enable
-            global ROGER_ENABLE
-            try:
-                roger_enable = config[cell]['roger_enable'].lower().strip()
-                if roger_enable == 'true':
-                    ROGER_ENABLE = True
-                elif roger_enable == 'false':
-                    ROGER_ENABLE = False
-                else:
-                    msg = "roger_enable only supports true/false."
-                    " {} provided".format(roger_enable)
-                    log_event(logger, ERROR, msg)
-            except Exception:
-                ROGER_ENABLE = True
+            set_roger_enable_option(config[cell], logger)
 
             # skip disabled nodes
-            global SKIP_DISABLED_COMPUTE_NODES
-            try:
-                skip_disabled_compute_nodes = config[cell]['skip_disabled_compute_nodes']\
-                    .lower().strip()
-                if skip_disabled_compute_nodes == 'true':
-                    SKIP_DISABLED_COMPUTE_NODES = True
-                elif skip_disabled_compute_nodes == 'false':
-                    SKIP_DISABLED_COMPUTE_NODES = False
-                else:
-                    msg = "skip_disabled_compute_nodes only supports true/false."
-                    " {} provided".format(roger_enable)
-                    log_event(logger, ERROR, msg)
-            except Exception:
-                SKIP_DISABLED_COMPUTE_NODES = True
+            set_skip_disabled_nodes_option(config[cell], logger)
 
             # region
             # TODO: to be replaced by cloud whe all code is refactored
@@ -1273,20 +1321,7 @@ def config_file_execution(args):
                 logger.info("region not defined. Using the default 'cern'")
 
             # no skip_shutdown_vms
-            global SKIP_SHUTDOWN_VMS
-            try:
-                skip_shutdown = config[cell]['skip_shutdown_vms'].lower()\
-                    .strip()
-                if skip_shutdown == 'true':
-                    SKIP_SHUTDOWN_VMS = True
-                elif skip_shutdown == 'false':
-                    SKIP_SHUTDOWN_VMS = False
-                else:
-                    log_event(logger, ERROR,
-                              "skip_shutdown_vms only support true/false.")
-                    sys.exit()
-            except Exception:
-                SKIP_SHUTDOWN_VMS = False
+            set_skip_shutdown_vms_option(config[cell], logger)
 
             # perform migration operation
             thread = threading.Thread(target=cell_migration,
