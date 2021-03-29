@@ -58,6 +58,7 @@ Requires:	python%{pyver}-six
 Requires:	python%{pyver}-sqlalchemy
 Requires:	python%{pyver}-swiftclient
 Requires:	python%{pyver}-tenacity
+Requires: python%{pyver}-configparser
 %{?el8:Requires:	python%{pyver}-radosgw-admin}
 %{?el7:Requires:	python-radosgw-admin}
 Requires:	python%{pyver}-zeep
@@ -92,6 +93,10 @@ migration cycle migrates VMS from one host to another host
 
 
 %changelog
+* Mon Mar 29 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.2
+- Bump version
+- Added configparser as a dependency
+
 * Fri Feb 19 2021 Jayaditya Gupta <Jayaditya.gupta@cern.ch> - 0.1.1
 - Add check date format
 - Update migration_cycle.py removed logger.error(sys.exc_info()) as it's not needed and cause misleading error logs.
