@@ -9,11 +9,12 @@ from email.mime.text import MIMEText
 from ccitools.utils.cloud import CloudRegionClient
 from datetime import datetime
 from distutils.util import strtobool
+import paramiko
+import select
 import subprocess
 import sys
 import time
 import threading
-from ccitools.common import ssh_executor ###<-
 from novaclient import client as nova_client
 
 from keystoneauth1 import session as keystone_session
@@ -45,6 +46,70 @@ SKIP_DISABLED_COMPUTE_NODES = True
 
 PING_UNAVAILABLE = 5
 PING_FREQUENCY = 2
+
+
+def ssh_executor(host, command, logger, connect_timeout=10,
+                 session_timeout=600, keep_alive_interval=None):
+    # connect to the machine
+    # Retry a few times if it fails.
+    retries = 1
+    while True:
+        msg = "Trying to connect to {} ({}/3)".format(host, retries)
+        log_event(logger, INFO, msg)
+        try:
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(host,
+                           username="root",
+                           timeout=connect_timeout,  # ConnectTimeout 10
+                           gss_auth=True)  # use krb to connect
+            log_event(logger, INFO, "Success! Connected to {}".format(host))
+            break
+        except paramiko.AuthenticationException:
+            msg = "Authentication failed when connecting to {}".format(host)
+            log_event(logger, ERROR, msg)
+        except paramiko.ChannelException:
+            log_event(logger, WARNING, "ssh: Could not access hostname {}"
+                      .format(host))
+        # If we could not connect within time limit
+        if retries == 3:
+            raise Exception("Could not connect to %s. Giving up." % host)
+        else:
+            retries += 1
+            time.sleep(5)
+
+    # Set ServerAliveInterval if provided
+    if keep_alive_interval:
+        client.get_transport().set_keepalive(keep_alive_interval)
+
+    # Send command
+    log_event(logger, INFO, "Sent command {}".format(command))
+    stdin, stdout, stderr = client.exec_command(command)  # nosec
+
+    # Wait for the command to terminate
+    start = time.time()
+    while time.time() < start + session_timeout:
+        if stdout.channel.exit_status_ready():
+            break
+        # Only print data if there is data to read in the channel
+        if stdout.channel.recv_ready():
+            rl, wl, xl = select.select([stdout.channel], [], [], 0.0)
+            if len(rl) > 0:
+                # Print data from stdout
+                print(stdout.channel.recv(1024))
+        time.sleep(1)
+    else:
+        client.close()
+        raise Exception("Command -> '%s' timed out on host %s"
+                        % (command, host))
+
+    # Close channel
+    log_event(logger, INFO, "Command done! Closing SSH connection.")
+    total_output = stdout.readlines()
+    total_error = stderr.readlines()
+    client.close()
+
+    return total_output, total_error
 
 
 def send_email(mail_body):
@@ -698,7 +763,7 @@ def ai_reboot_host(host, logger):
 def ssh_reboot(host, logger):
     # ssh into host and send reboot command
     try:
-        output, error = ssh_executor(host, "reboot")
+        output, error = ssh_executor(host, "reboot", logger)
     except Exception as e:
         log_event(logger, ERROR,
                   "[{}][failed to ssh and reboot][{}]".format(host, e))
@@ -957,7 +1022,7 @@ def ssh_uptime(hosts, logger):
     for host in hosts:
         try:
             # SSH and get uptime
-            output, error = ssh_executor(host, "cat /proc/uptime")
+            output, error = ssh_executor(host, "cat /proc/uptime", logger)
             log_event(logger, INFO,
                       "[connecting to {} to get uptime]".format(host))
             if error:
