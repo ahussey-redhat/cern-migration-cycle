@@ -222,7 +222,8 @@ def get_migration_id(cloud, instance_uuid, logger):
         return migration_id
     for migration in migration_list:
         if (migration.status.lower() != 'completed'
-           and migration.status.lower() != 'error'):
+           and migration.status.lower() != 'error'
+           and migration.status.lower() != 'cancelled'):
             migration_id = migration.id
             break
     return migration_id
