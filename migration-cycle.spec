@@ -12,7 +12,7 @@
 # End of macros for py2/py3 compatibility
 
 Name:           migration-cycle
-Version:        0.1.2
+Version:        0.1.3
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -83,6 +83,21 @@ migration cycle migrates VMS from one host to another host
 %{__install} -d -m 755 %{buildroot}%{_sysconfdir}/migration_cycle
 
 
+%post
+touch /lib/systemd/system/migration_cycle.service
+cat <<EOT >> /lib/systemd/system/migration_cycle.service
+[Unit]
+Description=Migration cycle Service
+After=multi-user.target
+
+[Service]
+# command to execute when the service is started
+ExecStart=/usr/bin/python /usr/bin/migration_cycle
+Restart=always
+EOT
+systemctl daemon-reload
+systemctl start migration_cycle.service
+
 %files
 %defattr (-, root, root)
 %{_bindir}/migration_cycle
@@ -93,6 +108,9 @@ migration cycle migrates VMS from one host to another host
 
 
 %changelog
+* Wed Apr 28 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.3
+- Added systemd service
+
 * Mon Mar 29 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.2
 - Bump version
 - Added configparser as a dependency
