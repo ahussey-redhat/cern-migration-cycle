@@ -6,7 +6,6 @@ import logging
 import os
 import smtplib
 from email.mime.text import MIMEText
-from ccitools.utils.cloud import CloudRegionClient
 from datetime import datetime
 from distutils.util import strtobool
 import paramiko
@@ -27,8 +26,8 @@ logging.basicConfig(level=logging.INFO,
 
 
 THREAD_MANAGER = []
-MAX_MIGRATION_TIMEOUT = 14400  #4 hours
-MAX_REBOOT_TIMEOUT = 1800 #30 minutes
+MAX_MIGRATION_TIMEOUT = 14400  # 4 hours
+MAX_REBOOT_TIMEOUT = 1800  # 30 minutes
 SLEEP_TIME = 30
 MAIL_RECEIPENTS = []
 INFO = 'info'
@@ -217,7 +216,7 @@ def get_migration_id(cloud, instance_uuid, logger):
     try:
         migration_list = nc.migrations.list(instance_uuid=instance_uuid)
     except Exception:
-        log_event(logger, ERROR, "[failed to get migration id of instance {}"
+        log_event(logger, ERROR, "[failed to get migration id of instance {}]"
                   .format(instance_uuid))
         return migration_id
     for migration in migration_list:
@@ -237,15 +236,16 @@ def get_migration_status(cloud, instance_uuid, logger):
     try:
         migration_list = nc.migrations.list(instance_uuid=instance_uuid)
     except Exception:
-        log_event(logger, ERROR, "[failed to get migration id of instance {}"
+        log_event(logger, ERROR, "[failed to get migration id of instance {}]"
                   .format(instance_uuid))
         return migration_status
     for migration in migration_list:
         if (migration.status.lower() != 'completed'
-           and migration.status.lower() != 'error'):
-            migration_status = migration.status
+           and migration.status.lower() != 'error'
+           and migration.status.lower() != 'cancelled'):
+            migration_status = migration.status.lower()
             break
-    return migration_status.lower()
+    return migration_status
 
 
 def get_migration_disk_size(cloud, instance_uuid, logger):
@@ -263,7 +263,7 @@ def get_migration_disk_size(cloud, instance_uuid, logger):
         if disk_size is None:
             disk_size = 0
     except Exception:
-        log_event(logger, ERROR, "[failed to get disk size of instance {}"
+        log_event(logger, ERROR, "[failed to get disk size of instance {}]"
                   .format(instance_uuid))
     log_event(logger, INFO, "[{}][disk_total_bytes : {}]"
               .format(instance.name, disk_size))
@@ -1089,27 +1089,6 @@ def make_hv_list(result, included_nodes, excluded_nodes):
     return hv_list
 
 
-# make cloud client
-def make_cloud_client():
-    cloud = CloudRegionClient()
-    return cloud
-
-
-# make nova client
-def make_nova_client(cloud, logger):
-    # make novaclient
-    try:
-        # version 2.56 to match with ccitools
-        # there is new microversion too. min 2.1 max 2.72
-        nc = nova_client.Client(version='2.56',
-                                session=cloud.session,
-                                region_name='cern')
-    except Exception as e:
-        log_event(logger, INFO, "[unable to create novaclient. {}]".format)
-        sys.exit(e)
-    return nc
-
-
 def init_nova_client(cloud, logger):
     def get_session(cloud, namespace=None):
         try:
@@ -1337,11 +1316,9 @@ def cli_execution(args):
         log_event(logger, INFO, "[{}][--> NEW EXECUTION <--]"
                   .format(host))
 
-        # make cloud client
-        cloud = make_cloud_client()
-
         # make nova client
-        nc = make_nova_client(cloud, logger)
+        nc = init_nova_client(region, logger)
+
         host_migration(region, nc, host, logger, args)
 
 
