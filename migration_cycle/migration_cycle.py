@@ -3,6 +3,7 @@
 import argparse
 import configparser
 import logging
+from multiprocessing.pool import ThreadPool
 import os
 import smtplib
 from email.mime.text import MIMEText
@@ -24,7 +25,7 @@ from os_client_config import config as cloud_config
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
-
+MAX_THREADS = 1
 THREAD_MANAGER = []
 MAX_MIGRATION_TIMEOUT = 14400  # 4 hours
 MAX_REBOOT_TIMEOUT = 1800  # 30 minutes
@@ -840,6 +841,7 @@ def reboot_ironic(nc, host, reboot_type, logger):
 def cell_migration(region, nc, hosts, cell_name, logger, args):
     count = 0
     cell_host_count = len(hosts)
+    pool = ThreadPool(processes=MAX_THREADS)
     while hosts:
         # create hypervisor dict with uptime
         hosts_dict = ssh_uptime(hosts, logger)
@@ -852,7 +854,10 @@ def cell_migration(region, nc, hosts, cell_name, logger, args):
         count += 1
         log_event(logger, INFO, "[working on compute node [{}]. ({}/{})]"
                   .format(host, count, cell_host_count))
-        host_migration(region, nc, host, logger, args)
+        pool.apply_async(host_migration, (region, nc, host, logger, args))
+        # host_migration(region, nc, host, logger, args)
+    pool.close()
+    pool.join()
 
 
 def reboot_manager(nc, host, logger, args):
@@ -1341,6 +1346,9 @@ def config_file_execution(args):
 # interactive execution
 def cli_execution(args):
 
+
+    pool = ThreadPool(processes=MAX_THREADS)
+
     for host in args.hosts.split():
         region = args.cloud
 
@@ -1354,7 +1362,10 @@ def cli_execution(args):
         # make nova client
         nc = init_nova_client(region, logger)
 
-        host_migration(region, nc, host, logger, args)
+        pool.apply_async(host_migration, (region, nc, host, logger, args))
+
+    pool.close()
+    pool.join()
 
 
 def main(args=None):
