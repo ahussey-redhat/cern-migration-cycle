@@ -663,7 +663,9 @@ def setup_logger(name, log_file, level=logging.INFO):
     return logger
 
 
-def get_service_uuid(nova_client, compute_node, logger):
+def get_service_uuid(region, compute_node, logger):
+    # make nova client
+    nova_client = init_nova_client(region, logger)
     try:
         service = nova_client.services.list(compute_node)
     except Exception as e:
@@ -692,7 +694,7 @@ def disable_compute_node(region, compute_node, logger):
     # make nova client
     nova_client = init_nova_client(region, logger)
 
-    service_uuid = get_service_uuid(nova_client, compute_node, logger)
+    service_uuid = get_service_uuid(region, compute_node, logger)
 
     # if disable reason is None. set disable reason.
     # if custom disable reason is provided use that IFF not already specified.
@@ -715,7 +717,10 @@ def disable_compute_node(region, compute_node, logger):
         raise e
 
 
-def enable_compute_node(nova_client, compute_node, logger):
+def enable_compute_node(region, compute_node, logger):
+    # make nova client
+    nc = init_nova_client(region, logger)
+
     service_uuid = get_service_uuid(nova_client, compute_node, logger)
     try:
         nova_client.services.enable(service_uuid)
@@ -810,7 +815,10 @@ def hv_post_reboot_checks(old_uptime, host, logger):
     return result
 
 
-def get_ironic_node(nc, host, logger):
+def get_ironic_node(region, host, logger):
+    # make nova client
+    nc = init_nova_client(region, logger)
+
     # returns ironic server
     host = host.replace(".cern.ch", "")
     search_opts = {}
@@ -827,9 +835,12 @@ def get_ironic_node(nc, host, logger):
     return ironic_server
 
 
-def ironic_check(nc, host, logger):
+def ironic_check(region, host, logger):
+    # make nova client
+    nc = init_nova_client(region, logger)
+
     # check if the given host is ironic managed or not
-    ironic_server = get_ironic_node(nc, host, logger)
+    ironic_server = get_ironic_node(region, host, logger)
 
     # IF not ironic list is Empty
     if not ironic_server:
@@ -838,7 +849,7 @@ def ironic_check(nc, host, logger):
         return True
 
 
-def reboot_ironic(nc, host, reboot_type, logger):
+def reboot_ironic(host, reboot_type, logger):
     try:
         node = host
         # REBOOT_SOFT, REBOOT_HARD = 'SOFT', 'HARD'
@@ -851,7 +862,7 @@ def reboot_ironic(nc, host, reboot_type, logger):
     return False
 
 
-def cell_migration(region, nc, hosts, cell_name, logger, args):
+def cell_migration(region, hosts, cell_name, logger, args):
     count = 0
     cell_host_count = len(hosts)
     pool = ThreadPool(processes=MAX_THREADS)
@@ -867,13 +878,15 @@ def cell_migration(region, nc, hosts, cell_name, logger, args):
         count += 1
         log_event(logger, INFO, "[working on compute node [{}]. ({}/{})]"
                   .format(host, count, cell_host_count))
-        pool.apply_async(host_migration, (region, nc, host, logger, args))
+        pool.apply_async(host_migration, (region, host, logger, args))
         # host_migration(region, nc, host, logger, args)
     pool.close()
     pool.join()
 
 
-def reboot_manager(nc, host, logger, args):
+def reboot_manager(region, host, logger, args):
+    # make nova client
+    nc = init_nova_client(region, logger)
     # we need list for ssh_uptime
     # get uptime and store it
     old_uptime = ssh_uptime([host], logger)
@@ -881,16 +894,16 @@ def reboot_manager(nc, host, logger, args):
               "[{}][old uptime] [{}]".format(host, old_uptime[host]))
 
     # check if the HV is ironic managed
-    ironic_node = get_ironic_node(nc, host, logger)
+    ironic_node = get_ironic_node(region, host, logger)
     if ironic_node:
         # first try reboot by doing SSH
         if ssh_reboot(host, logger):
             log_event(logger, INFO, "[{}][ironic node reboot via SSH success]"
                       .format(host))
-        elif reboot_ironic(nc, ironic_node, 'SOFT', logger):
+        elif reboot_ironic(ironic_node, 'SOFT', logger):
             # ironic managed soft reboot
             log_event(logger, INFO, "[{}][soft reboot success]".format(host))
-        elif reboot_ironic(nc, ironic_node, 'HARD', logger):
+        elif reboot_ironic(ironic_node, 'HARD', logger):
             # ironic managed hard reboot
             log_event(logger, INFO, "[{}][hard reboot cmd success]"
                       .format(host))
@@ -934,7 +947,9 @@ def reboot_manager(nc, host, logger, args):
                           "[{}][reboot cmd failed]".format(host))
 
 
-def host_migration(region, nc, host, logger, args):
+def host_migration(region, host, logger, args):
+    # make nova client
+    nc = init_nova_client(region, logger)
 
     if check_uptime_threshold(host, logger):
         # continue migration
@@ -973,7 +988,7 @@ def host_migration(region, nc, host, logger, args):
     if not disable_alarm(host, logger):
         # revert compute status(enable)
         try:
-            enable_compute_node(nc, host, logger)
+            enable_compute_node(region, host, logger)
         except:
             log_event(logger, INFO, "[{}][skiping node]".format(host))
             return
@@ -986,7 +1001,7 @@ def host_migration(region, nc, host, logger, args):
     # if there are still vms left don't reboot
     if is_compute_node_empty(region, host, logger):
         if REBOOT:
-            reboot_manager(nc, host, logger, args)
+            reboot_manager(region, host, logger, args)
         else:
             log_event(logger, INFO,
                       "[{}][reboot FALSE option provided]".format(host))
@@ -1003,7 +1018,7 @@ def host_migration(region, nc, host, logger, args):
                     logger.info("[{}][no_reboot option provided]"
                                 .format(host))
                 else:
-                    reboot_manager(nc, host, logger, args)
+                    reboot_manager(region, host, logger, args)
             else:
                 logger.info("[{}][vms not in shutoff state. can't reboot]"
                             .format(host))
@@ -1014,7 +1029,7 @@ def host_migration(region, nc, host, logger, args):
     if COMPUTE_ENABLE:
         # enable the compute node
         try:
-            enable_compute_node(nc, host, logger)
+            enable_compute_node(region, host, logger)
         except:
             pass
     else:
@@ -1365,7 +1380,7 @@ def config_file_execution(args):
 
             # perform migration operation
             thread = threading.Thread(target=cell_migration,
-                                      args=(region, nc, hv_list,
+                                      args=(region, hv_list,
                                             config[cell]['name'],
                                             logger, args))
             thread.start()
@@ -1397,7 +1412,7 @@ def cli_execution(args):
         # make nova client
         nc = init_nova_client(region, logger)
 
-        pool.apply_async(host_migration, (region, nc, host, logger, args))
+        pool.apply_async(host_migration, (region, host, logger, args))
 
     pool.close()
     pool.join()
