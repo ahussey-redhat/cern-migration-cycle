@@ -46,6 +46,19 @@ SKIP_DISABLED_COMPUTE_NODES = True
 
 PING_UNAVAILABLE = 5
 PING_FREQUENCY = 2
+UPTIME_THRESHOLD = 0
+
+
+def check_uptime_threshold(compute_node, logger):
+    """ returns True if compute_node has been up for
+    more than a certain uptime threshold."""
+    if float(UPTIME_THRESHOLD) == 0:
+        log_event(logger, INFO, "[uptime threshold not defined]")
+        return True
+    uptime = ssh_uptime([compute_node], logger)
+    if float(uptime[compute_node]) > float(UPTIME_THRESHOLD):
+        return True
+    return False
 
 
 def ssh_executor(host, command, logger, connect_timeout=10,
@@ -923,6 +936,16 @@ def reboot_manager(nc, host, logger, args):
 
 def host_migration(region, nc, host, logger, args):
 
+    if check_uptime_threshold(host, logger):
+        # continue migration
+        pass
+    else:
+        log_event(logger, INFO, "[{}][uptime less than threshold]"
+                  .format(host))
+        log_event(logger, INFO, "[{}][skipping the compute node"
+                  .format(host))
+        return
+
     # get state and status of hypervisor
     # if state == up && status == enabled PROCEED
     # else return
@@ -1235,6 +1258,15 @@ def set_skip_shutdown_vms_option(config, logger):
         log_event(logger, INFO, "using default. skip shutdown vms False")
 
 
+def set_config_uptime_threshold(config):
+    global UPTIME_THRESHOLD
+    try:
+        uptime = str(config['DEFAULT']['UPTIME_THRESHOLD'])
+        UPTIME_THRESHOLD = uptime
+    except Exception:
+        UPTIME_THRESHOLD = 0
+
+
 def config_file_execution(args):
     # parse the config file
     config = configparser.ConfigParser()
@@ -1258,6 +1290,9 @@ def config_file_execution(args):
         MAIL_RECEIPENTS = [m.strip() for m in MAIL_RECEIPENTS]
     except Exception:
         MAIL_RECEIPENTS = []
+
+    # set uptime threshold
+    set_config_uptime_threshold(config)
 
     region = 'cern'
 
