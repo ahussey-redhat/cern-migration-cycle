@@ -92,7 +92,7 @@ After=multi-user.target
 
 [Service]
 # command to execute when the service is started
-ExecStart=/usr/bin/python /usr/bin/migration_cycle
+ExecStart=/usr/bin/python /usr/bin/migration_manager --config "/etc/migration_cycle/migration_cycle.conf"
 Restart=always
 EOT
 systemctl daemon-reload
@@ -103,6 +103,7 @@ systemctl start migration_cycle.service
 %{_bindir}/migration_cycle
 %{pyver_sitelib}/migration_cycle/
 %attr(0755, root, root) %{pyver_sitelib}/migration_cycle/migration_cycle.py
+%attr(0755, root, root) %{pyver_sitelib}/migration_cycle/migration_manager.py
 %{pyver_sitelib}/*.egg-info
 %dir %attr(0755, root, root) %{_sysconfdir}/migration_cycle
 
