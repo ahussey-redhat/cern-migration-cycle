@@ -699,7 +699,7 @@ def disable_compute_node(region, compute_node, logger):
     # if disable reason is None. set disable reason.
     # if custom disable reason is provided use that IFF not already specified.
     dr = get_disabled_reason(region, compute_node, logger)
-    if dr is None:
+    if not dr or dr is None:
         if DISABLED_REASON:
             dr = DISABLED_REASON
         else:
@@ -719,9 +719,9 @@ def disable_compute_node(region, compute_node, logger):
 
 def enable_compute_node(region, compute_node, logger):
     # make nova client
-    nc = init_nova_client(region, logger)
+    nova_client = init_nova_client(region, logger)
 
-    service_uuid = get_service_uuid(nova_client, compute_node, logger)
+    service_uuid = get_service_uuid(region, compute_node, logger)
     try:
         nova_client.services.enable(service_uuid)
         log_event(logger, INFO,
