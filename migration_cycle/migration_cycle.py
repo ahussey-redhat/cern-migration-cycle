@@ -7,6 +7,7 @@ import logging
 from distutils.util import strtobool
 from multiprocessing.pool import ThreadPool
 from migration_manager import setup_logger, log_event, host_migration
+from migration_manager import set_global_vars_cli_execution
 
 # configure logging
 logging.basicConfig(level=logging.INFO,
@@ -55,29 +56,8 @@ def cli_execution(args):
 
     args = parser.parse_args()
 
-    # compute_enable
-    if args.compute_enable is not None:
-        g.COMPUTE_ENABLE = args.compute_enable
 
-    # roger_enable
-    if args.roger_enable is not None:
-        g.ROGER_ENABLE = args.roger_enable
-
-    # reboot
-    if args.reboot is not None:
-        g.REBOOT = args.reboot
-
-    # disable reason
-    if args.disable_reason is not None:
-        g.DISABLED_REASON = args.disable_reason
-
-    # skip_shutdown_vms
-    if args.skip_shutdown_vms:
-        g.SKIP_SHUTDOWN_VMS = True
-
-    # skip_disabled_compute_nodes
-    if args.skip_disabled_compute_nodes is not None:
-        g.SKIP_DISABLED_COMPUTE_NODES = args.skip_disabled_compute_nodes
+    set_global_vars_cli_execution(args)
 
     # max_threads
     if args.max_threads is not None:

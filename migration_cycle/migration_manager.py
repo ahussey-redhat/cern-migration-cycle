@@ -1234,6 +1234,38 @@ def set_skip_disabled_nodes_option(config, logger):
                                 " True")
 
 
+def set_global_vars_cli_execution(args):
+    # compute_enable
+    global COMPUTE_ENABLE
+    if args.compute_enable is not None:
+        COMPUTE_ENABLE = args.compute_enable
+
+    # roger_enable
+    global ROGER_ENABLE
+    if args.roger_enable is not None:
+        ROGER_ENABLE = args.roger_enable
+
+    # reboot
+    global REBOOT
+    if args.reboot is not None:
+        REBOOT = args.reboot
+
+    # disable reason
+    global DISABLED_REASON
+    if args.disable_reason is not None:
+        DISABLED_REASON = args.disable_reason
+
+    # skip_shutdown_vms
+    global SKIP_SHUTDOWN_VMS
+    if args.skip_shutdown_vms:
+        SKIP_SHUTDOWN_VMS = True
+
+    # skip_disabled_compute_nodes
+    global SKIP_DISABLED_COMPUTE_NODES
+    if args.skip_disabled_compute_nodes is not None:
+        SKIP_DISABLED_COMPUTE_NODES = args.skip_disabled_compute_nodes
+
+
 def set_skip_shutdown_vms_option(config, logger):
     global SKIP_SHUTDOWN_VMS
     try:
