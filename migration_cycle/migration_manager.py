@@ -265,6 +265,16 @@ def get_migration_disk_size(cloud, instance_uuid, logger):
 
 
 def live_migration(cloud, instance, compute_node, logger):
+    # ping before live migration starts
+    # instance_first_ping_status == True . Ping was reachable
+    # instance_first_ping_status == False. Unreachable
+    instance_first_ping_status = ping_instance(instance.name, logger)
+
+    # if unreachable from beginning. do not probe instance
+    if not instance_first_ping_status:
+        log_event(logger, INFO, "[{} unreachable][do not probe instance]"
+                  .format(instance.name))
+
     # start time
     start_time = time.time()
 
@@ -302,7 +312,10 @@ def live_migration(cloud, instance, compute_node, logger):
 
     increment = 0
     while MAX_MIGRATION_TIMEOUT > increment:
-        probe_instance_availability(cloud, instance.name, SLEEP_TIME, logger)
+        if instance_first_ping_status:
+            probe_instance_availability(cloud, instance.name,
+                                        SLEEP_TIME,
+                                        logger)
 
         # get updated server instance
         instance = get_instance_from_uuid(cloud, instance.id, logger)
@@ -572,12 +585,6 @@ def vms_migration(cloud, compute_node, logger):
             # check task state
             if server_dict["OS-EXT-STS:task_state"] is None:
                 if u_server.status == "ACTIVE":
-                    # ping before live migration starts
-                    # if unreachable from beginning. skip it
-                    if not ping_instance(u_server.name, logger):
-                        log_event(logger, INFO, "[{} unreachable. skipping]"
-                                  .format(u_server))
-                        continue
                     res = live_migration(cloud,
                                          u_server,
                                          compute_node,
