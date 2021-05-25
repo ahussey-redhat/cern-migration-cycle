@@ -15,7 +15,9 @@ logging.basicConfig(level=logging.INFO,
 
 
 def cli_execution(args):
-    parser = argparse.ArgumentParser(description='Migration cycle interface')
+    parser = argparse.ArgumentParser(description='Migration cycle interface',
+                                     formatter_class=argparse.
+                                     ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--hosts', dest='hosts', required=True,
                         help='select the hosts to empty')
@@ -23,15 +25,17 @@ def cli_execution(args):
     parser.add_argument('--cloud', dest='cloud', default='cern',
                         help='cloud in clouds.yaml for the compute nodes')
 
-    parser.add_argument('--reboot', dest='reboot',
+    parser.add_argument('--reboot', dest='reboot', default=True,
                         type=lambda x: bool(strtobool(x)),
                         help='reboot host true/false when host is empty.')
 
     parser.add_argument('--compute-enable', dest='compute_enable',
+                        default=True,
                         type=lambda x: bool(strtobool(x)),
                         help='enable/disable the compute service after reboot')
 
     parser.add_argument('--roger-enable', dest='roger_enable',
+                        default=True,
                         type=lambda x: bool(strtobool(x)),
                         help='enable/disable roger after reboot')
 
@@ -39,12 +43,14 @@ def cli_execution(args):
                         help='disable reason to use in the service')
 
     parser.add_argument('--skip-shutdown-vms', dest='skip_shutdown_vms',
-                        action='store_true',
+                        default=False,
+                        type=lambda x: bool(strtobool(x)),
                         help='do not cold migrate instances if they are in'
                         'shutdown state')
 
     parser.add_argument('--skip-disabled-compute-nodes',
                         dest='skip_disabled_compute_nodes',
+                        default=True,
                         type=lambda x: bool(strtobool(x)),
                         help='perform migration on disabled node true/false')
 
@@ -54,8 +60,11 @@ def cli_execution(args):
                         default=g.MAX_THREADS,
                         help='max number of compute nodes to work on at time')
 
-    args = parser.parse_args()
+    if not args:
+        parser.print_help()
+        sys.exit()
 
+    args = parser.parse_args()
 
     set_global_vars_cli_execution(args)
 
