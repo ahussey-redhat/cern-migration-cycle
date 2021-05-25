@@ -24,7 +24,8 @@ In this example we specify the config file to use.
 
 
 ##### Reading logs
-Log files are stored in "/var/migration_cycle/<name-of-thelog>".
+
+Log files are stored in "/var/log/migration_cycle/<name-of-the-log>".
 if CLI is being used the log file name will be name of the hosts.
 if config file is being used the log file name will be name of the cell.
 

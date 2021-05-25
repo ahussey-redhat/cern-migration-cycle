@@ -960,13 +960,13 @@ def host_migration(region, host, logger, args):
             log_event(logger, WARNING,
                       "[{}][compute node is not UP or enabled]"
                       .format(host))
-            log_event(logger, INFO, "[{}][skiping compute node]".format(host))
+            log_event(logger, INFO, "[{}][skipping compute node]".format(host))
             return
 
     try:
         disable_compute_node(region, host, logger)
     except:
-        log_event(logger, INFO, "[{}][skiping node]".format(host))
+        log_event(logger, INFO, "[{}][skipping node]".format(host))
         return
 
     # change GNI alarm status via Roger
@@ -976,9 +976,9 @@ def host_migration(region, host, logger, args):
         try:
             enable_compute_node(region, host, logger)
         except:
-            log_event(logger, INFO, "[{}][skiping node]".format(host))
+            log_event(logger, INFO, "[{}][skipping node]".format(host))
             return
-        log_event(logger, INFO, "[{}][skiping node]".format(host))
+        log_event(logger, INFO, "[{}][skipping node]".format(host))
         return
 
     vms_migration(region, host, logger)
