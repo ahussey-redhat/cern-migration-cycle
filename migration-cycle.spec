@@ -96,7 +96,11 @@ ExecStart=/usr/bin/python /usr/bin/migration_manager --config "/etc/migration_cy
 Restart=always
 EOT
 systemctl daemon-reload
-systemctl start migration_cycle.service
+# systemctl start migration_cycle.service
+# make logs directory and set permission
+mkdir -p /var/log/migration_cycle
+chmod 775 /var/log/migration_cycle
+
 
 %files
 %defattr (-, root, root)
@@ -109,8 +113,8 @@ systemctl start migration_cycle.service
 
 
 %changelog
-* Wed Apr 28 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.3
-- Added systemd service
+* Tue May 25 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.3
+- remove starting of migration cycle service
 
 * Mon Mar 29 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.2
 - Bump version
