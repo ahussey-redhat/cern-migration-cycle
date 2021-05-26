@@ -329,7 +329,9 @@ def live_migration(cloud, instance, compute_node, logger):
             migration_status = get_migration_status(cloud, instance.id, logger)
 
         # if status == running get the disk info
-        if migration_status == 'running' and disk_size is None:
+        # VM should be booted from image to get disk size.
+        if migration_status == 'running' and disk_size is None \
+           and ins_dict["image"]:
             disk_size = get_migration_disk_size(cloud, instance.id, logger)
             # convert bytes to MB
             disk_size = disk_size / (1024 ** 2)
@@ -367,10 +369,11 @@ def live_migration(cloud, instance, compute_node, logger):
             log_event(logger, INFO,
                       "[{}][live migration][finished]"
                       .format(ins_dict['name']))
-            transfer_rate = disk_size / round(time.time() - start_time, 2)
-            log_event(logger, INFO,
-                      "[{}][live migration transfer rate {} MB/s]"
-                      .format(instance.name, transfer_rate))
+            if disk_size is not None:
+                transfer_rate = disk_size / round(time.time() - start_time, 2)
+                log_event(logger, INFO,
+                          "[{}][live migration transfer rate {} MB/s]"
+                          .format(instance.name, transfer_rate))
             return True
         increment = time.time() - start_time
     return False
