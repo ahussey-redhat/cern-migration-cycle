@@ -30,9 +30,24 @@ python36:
   except:
     - tags
   script:
+    - python3 -V
     - dnf install openldap-devel krb5-devel -y
     - cd $CI_PROJECT_DIR
     - tox -epy36
+
+cover:
+  stage: prebuild
+  image: gitlab-registry.cern.ch/cloud-infrastructure/cci-scripts/tox8
+  except:
+    - tags
+  script:
+    - dnf install openldap-devel krb5-devel -y
+    - cd $CI_PROJECT_DIR
+    - tox -ecover
+  artifacts:
+    paths:
+      - cover
+
 
 .rpm_deps:
   before_script:

@@ -1132,8 +1132,7 @@ def ssh_uptime(hosts, logger):
 
 
 # filter and make hv_list
-def make_hv_list(result, included_nodes, excluded_nodes):
-    hosts = result.hosts
+def make_hv_list(hosts, included_nodes, excluded_nodes):
 
     # format the lists
     if included_nodes == ['']:
@@ -1477,7 +1476,8 @@ def config_file_execution(args):
                 continue
 
             # create hv_list
-            hv_list = make_hv_list(result, included_nodes, excluded_nodes)
+            hosts = result.hosts
+            hv_list = make_hv_list(hosts, included_nodes, excluded_nodes)
 
             # reboot
             set_reboot_config_option(config[cell], logger)

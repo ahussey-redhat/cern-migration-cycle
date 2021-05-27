@@ -1,4 +1,12 @@
+coverage>=5.2.1
+doc8>=0.8.0
+docutils>=0.15.2
+hacking>=4.0.0
+pep257==0.7.0
 flake8>=3.8.4
 flake8-docstrings==0.2.1.post1
+pyflakes==2.2.0
 mock>=2.0.0
+stestr>=2.0.0,<3.0.0
+bandit>=1.6.1 # Apache-2.0
 requests-mock

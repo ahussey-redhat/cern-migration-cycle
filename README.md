@@ -1,5 +1,7 @@
 # migration_cycle
 
+[![pipeline status](https://gitlab.cern.ch/cloud-infrastructure/migration_cycle/badges/master/pipeline.svg)](https://gitlab.cern.ch/cloud-infrastructure/migration_cycle/-/commits/master)
+[![coverage report](https://gitlab.cern.ch/cloud-infrastructure/migration_cycle/badges/master/coverage.svg)](https://gitlab.cern.ch/cloud-infrastructure/migration_cycle/-/commits/master)
 
 ### Examples
 
