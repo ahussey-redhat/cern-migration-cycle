@@ -12,7 +12,7 @@
 # End of macros for py2/py3 compatibility
 
 Name:           migration-cycle
-Version:        0.1.3
+Version:        0.1.4
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -113,8 +113,12 @@ chmod 775 /var/log/migration_cycle
 
 
 %changelog
-* Tue May 25 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.3
+* Tue May 25 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.4
 - remove starting of migration cycle service
+- bug fixes
+
+* Wed Apr 28 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.3
+- Added systemd service
 
 * Mon Mar 29 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.2
 - Bump version
