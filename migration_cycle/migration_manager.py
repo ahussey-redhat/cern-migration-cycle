@@ -1428,6 +1428,7 @@ def config_file_execution(args):
 
 
 def main(args):
+    args = sys.argv[1:]
     # TODO : create master logger
     # create logs directory
     if not os.path.exists('/var/log/migration_cycle'):
@@ -1442,5 +1443,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    main(args)
+    main()

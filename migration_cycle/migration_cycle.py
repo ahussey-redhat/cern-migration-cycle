@@ -90,10 +90,11 @@ def cli_execution(args):
     pool.join()
 
 
-def main(args):
+def main():
+    args = sys.argv[1:]
     cli_execution(args)
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    main(args)
+    main()
+

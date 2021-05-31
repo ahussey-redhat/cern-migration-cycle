@@ -82,7 +82,6 @@ migration cycle migrates VMS from one host to another host
 %pyver_install
 %{__install} -d -m 755 %{buildroot}%{_sysconfdir}/migration_cycle
 
-
 %post
 touch /lib/systemd/system/migration_cycle.service
 cat <<EOT >> /lib/systemd/system/migration_cycle.service
@@ -104,15 +103,21 @@ chmod 775 /var/log/migration_cycle
 
 %files
 %defattr (-, root, root)
-%{_bindir}/migration_cycle
+%{_bindir}/migration_*
 %{pyver_sitelib}/migration_cycle/
 %attr(0755, root, root) %{pyver_sitelib}/migration_cycle/migration_cycle.py
 %attr(0755, root, root) %{pyver_sitelib}/migration_cycle/migration_manager.py
 %{pyver_sitelib}/*.egg-info
 %dir %attr(0755, root, root) %{_sysconfdir}/migration_cycle
 
+%clean
+rm -rf %{buildroot}
 
 %changelog
+* Tue Jun 01 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.4.1
+- make migration_manager cmd available in setup.cfg
+- bug fixes
+
 * Tue May 25 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.4
 - remove starting of migration cycle service
 - bug fixes
