@@ -12,7 +12,7 @@
 # End of macros for py2/py3 compatibility
 
 Name:           migration-cycle
-Version:        0.1.4
+Version:        0.1.5
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -114,7 +114,7 @@ chmod 775 /var/log/migration_cycle
 rm -rf %{buildroot}
 
 %changelog
-* Tue Jun 01 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.4.1
+* Tue Jun 01 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.5
 - make migration_manager cmd available in setup.cfg
 - bug fixes
 
