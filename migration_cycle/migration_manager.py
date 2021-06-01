@@ -1427,7 +1427,7 @@ def config_file_execution(args):
             break
 
 
-def main(args):
+def main():
     args = sys.argv[1:]
     # TODO : create master logger
     # create logs directory
