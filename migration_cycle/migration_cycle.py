@@ -14,6 +14,12 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
+def cli_logger(hostname):
+    logger = logging.getLogger(hostname)
+    logger.setLevel(logging.INFO)
+    return logger
+
+
 def cli_execution(args):
     parser = argparse.ArgumentParser(description='Migration cycle interface',
                                      formatter_class=argparse.
@@ -59,6 +65,8 @@ def cli_execution(args):
                         type=int,
                         default=g.MAX_THREADS,
                         help='max number of compute nodes to work on at time')
+    parser.add_argument('--no-logfile', action='store_true',
+                        help='do not write to log file. just output logs.')
 
     if not args:
         parser.print_help()
@@ -78,8 +86,11 @@ def cli_execution(args):
         region = args.cloud
 
         # create logger
-        logfile_name = '/var/log/migration_cycle/' + host + '.log'
-        logger = setup_logger(host, logfile_name)
+        if args.no_logfile:
+            logger = cli_logger(host)
+        else:
+            logfile_name = '/var/log/migration_cycle/' + host + '.log'
+            logger = setup_logger(host, logfile_name)
 
         log_event(logger, g.INFO, "[{}][--> NEW EXECUTION <--]"
                   .format(host))
