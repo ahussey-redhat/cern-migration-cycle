@@ -12,7 +12,7 @@
 # End of macros for py2/py3 compatibility
 
 Name:           migration-cycle
-Version:        0.1.6
+Version:        0.1.7
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -114,6 +114,10 @@ chmod 775 /var/log/migration_cycle
 rm -rf %{buildroot}
 
 %changelog
+* Fri Jun 04 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.7
+- no-logfile parameter support.
+- User can choose whether to write logs to file or not.
+
 * Tue Jun 01 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.6
 - bug fix
 - bump version
