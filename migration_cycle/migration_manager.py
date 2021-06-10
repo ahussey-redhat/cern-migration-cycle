@@ -40,6 +40,33 @@ def check_uptime_threshold(compute_node, logger):
     return False
 
 
+def kernel_reboot_upgrade(host, logger):
+    """ check kernel running on HV and return if it needs
+    upgrade"""
+    # command to compare running and configured kernel
+    r_kernel = "uname -r"
+    c_kernel = "grubby --default-kernel | sed 's/^.*vmlinuz-//'"
+
+    try:
+        running_kernel, error = ssh_executor(host, r_kernel, logger)
+    except Exception as e:
+        log_event(logger, ERROR, "error in checking kernel running on {}. {}"
+                  .format(host, error))
+        log_event(logger, ERROR, e)
+
+    try:
+        configured_kernel, error = ssh_executor(host, c_kernel, logger)
+    except Exception as e:
+        log_event(logger, ERROR, "error in checking kernel running on {}. {}"
+                  .format(host, error))
+        log_event(logger, ERROR, e)
+
+    if running_kernel != configured_kernel:
+        return True
+    else:
+        return False
+
+
 def ssh_executor(host, command, logger, connect_timeout=10,
                  session_timeout=600, keep_alive_interval=None):
     # connect to the machine
@@ -874,6 +901,17 @@ def cell_migration(region, hosts, cell_name, logger, args):
 
 
 def reboot_manager(region, host, logger, args):
+
+    # kernel check and see if it needs update
+    kernel_upgrade = True
+    if KERNEL_CHECK:
+        log_event(logger, INFO, "kernel check option provided.")
+        kernel_upgrade = kernel_reboot_upgrade(host, logger)
+    
+    if not kernel_upgrade:
+        log_event(logger, INFO, "[{}][kernel already running latest version]")
+        log_event(logger, INFO, "[{}][reboot not required.]")
+
     # make nova client
     nc = init_nova_client(region, logger)
     # we need list for ssh_uptime
@@ -1294,6 +1332,22 @@ def set_skip_shutdown_vms_option(config, logger):
         log_event(logger, INFO, "using default. skip shutdown vms False")
 
 
+def get_kernel_check_config_option(config):
+    global KERNEL_CHECK
+    try:
+        kernel_check = config['DEFAULT']['kernel_check'].lower().strip()
+        if kernel_check == 'true':
+            KERNEL_CHECK = True
+        elif kernel_check == 'false':
+            KERNEL_CHECK = False
+        else:
+            msg = "kernel_check only support true/false."
+            " {} provided.".format(kernel_check)
+            sys.exit(msg)
+    except Exception as e:
+        KERNEL_CHECK = False
+
+
 def set_config_uptime_threshold(config):
     global UPTIME_THRESHOLD
     try:
@@ -1342,6 +1396,9 @@ def config_file_execution(args):
 
     # get max threads
     get_max_threads_config_option(config)
+
+    # get kernel check
+    get_kernel_check_config_option(config)
 
     region = 'cern'
 
