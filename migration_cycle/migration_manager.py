@@ -1,8 +1,8 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import argparse
 import configparser
-from global_vars import *
+from migration_cycle.global_vars import *
 import logging
 from multiprocessing.pool import ThreadPool
 import os

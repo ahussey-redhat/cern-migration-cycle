@@ -1,13 +1,14 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import argparse
 import sys
-import global_vars as g
+from migration_cycle import global_vars as g
 import logging
 from distutils.util import strtobool
 from multiprocessing.pool import ThreadPool
-from migration_manager import setup_logger, log_event, host_migration
-from migration_manager import set_global_vars_cli_execution
+from migration_cycle.migration_manager import setup_logger, log_event, \
+    host_migration
+from migration_cycle.migration_manager import set_global_vars_cli_execution
 
 # configure logging
 logging.basicConfig(level=logging.INFO,

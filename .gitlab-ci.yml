@@ -1,19 +1,18 @@
 ---
 variables:
   KOJICI_USER: 'svcbuild'
-  KOJI_TAG_8: 'cci-utils8'
-  KOJI_TAG_7: 'cci7-utils'
+  KOJI_TAG: 'cci-utils'
   BUILD_8: 'True'
-  BUILD_7: 'True'
-  BUILD_6: 'False'
+  BUILD_8s: 'True'
   DIST_8: '.el8'
-  DIST_7: '.el7'
+  DIST_8s: '.el8s'
+
+
+
 
 # DO NOT MODIFY THIS
 include: 'https://gitlab.cern.ch/linuxsupport/rpmci/raw/master/rpm-ci.yml'
 # DO NOT MODIFY THIS
-
-# image: cern/cc7-base
 
 # pep8:
 #   stage: prebuild

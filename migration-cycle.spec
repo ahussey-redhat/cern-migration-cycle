@@ -1,18 +1,5 @@
-# Macros for py2/py3 compatibility
-%if 0%{?fedora} || 0%{?rhel} > 7
-%global pyver %{python3_pkgversion}
-%else
-%global pyver 2
-%endif
-
-%global pyver_bin python%{pyver}
-%global pyver_sitelib %{expand:%{python%{pyver}_sitelib}}
-%global pyver_install %{expand:%{py%{pyver}_install}}
-%global pyver_build %{expand:%{py%{pyver}_build}}
-# End of macros for py2/py3 compatibility
-
 Name:           migration-cycle
-Version:        0.1.7
+Version:        0.1.8
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -22,46 +9,37 @@ License:        MIT
 URL:            https://gitlab.cern.ch/cloud-infrastructure/migration_cycle
 
 
-%{?el8:BuildRequires:	python%{pyver}-devel}
-%{?el8:BuildRequires:	python%{pyver}-pbr}
-%{?el8:BuildRequires:	python%{pyver}-setuptools}
-%{?el7:BuildRequires:	python-devel}
-%{?el7:BuildRequires:	python-pbr}
-%{?el7:BuildRequires:	python-setuptools}
+BuildRequires:  python3-devel
+BuildRequires:  python3-pbr
+BuildRequires:  python3-setuptools
+BuildRequires:  python3-oslo-config
 
-BuildRequires:  python%{pyver}-oslo-config
+Requires:   auth-get-sso-cookie
+Requires:   python3-arrow
+Requires:   python3-cinderclient
+Requires:   python3-boto
+Requires:   python3-ldap
+Requires:   python3-cornerstoneclient
+Requires:   python3-gssapi
+Requires:   python3-keystoneclient
+Requires:   python3-magnumclient
+Requires:   python3-manilaclient
+Requires:   python3-novaclient
+Requires:   python3-neutronclient
+Requires:   python3-openstackclient
+Requires:   python3-oslo-config
+Requires:   python3-os-client-config
+Requires:   python3-paramiko
+Requires:   python3-PyMySQL
+Requires:   python3-pytz
+Requires:   python3-requests
+Requires:   python3-six
+Requires:   python3-sqlalchemy
+Requires:   python3-swiftclient
+Requires:   python3-tenacity
+Requires:   python3-radosgw-admin
+Requires:   python3-zeep
 
-Requires:	auth-get-sso-cookie
-Requires:	python%{pyver}-arrow
-Requires:       python%{pyver}-cinderclient
-%{?el8:Requires:	python%{pyver}-boto}
-%{?el7:Requires:        python-boto}
-%{?el8:Requires:	python%{pyver}-ldap}
-%{?el7:Requires:	python-ldap}
-%{?el8:Requires:	python%{pyver}-cornerstoneclient}
-%{?el7:Requires:	python-cornerstoneclient}
-%{?el8:Requires:	python%{pyver}-gssapi}
-%{?el7:Requires:	python-gssapi}
-Requires:	python%{pyver}-keystoneclient
-Requires:	python%{pyver}-magnumclient
-Requires:	python%{pyver}-manilaclient
-Requires:	python%{pyver}-novaclient
-Requires:	python%{pyver}-neutronclient
-Requires:	python%{pyver}-openstackclient
-Requires:	python%{pyver}-oslo-config
-Requires:	python%{pyver}-os-client-config
-Requires:	python%{pyver}-paramiko
-Requires:	python%{pyver}-PyMySQL
-Requires:	python%{pyver}-pytz
-Requires:	python%{pyver}-requests
-Requires:	python%{pyver}-six
-Requires:	python%{pyver}-sqlalchemy
-Requires:	python%{pyver}-swiftclient
-Requires:	python%{pyver}-tenacity
-Requires: python%{pyver}-configparser
-%{?el8:Requires:	python%{pyver}-radosgw-admin}
-%{?el7:Requires:	python-radosgw-admin}
-Requires:	python%{pyver}-zeep
 
 %description
 migration cycle migrates VMS from one host to another host
@@ -69,17 +47,12 @@ migration cycle migrates VMS from one host to another host
 %prep
 %autosetup -p1 -n %{name}-%{version}
 
-# Fix for shebangs
-%if 0%{?fedora} || 0%{?rhel} > 7
-  pathfix.py -pni "%{__python3} %{py3_shbang_opts}" .
-%endif
-
 %build
-%pyver_build
+%py3_build
 
 
 %install
-%pyver_install
+%py3_install
 %{__install} -d -m 755 %{buildroot}%{_sysconfdir}/migration_cycle
 
 %post
@@ -100,20 +73,25 @@ systemctl daemon-reload
 mkdir -p /var/log/migration_cycle
 chmod 775 /var/log/migration_cycle
 
+%postun
+rm /lib/systemd/system/migration_cycle.service
 
 %files
 %defattr (-, root, root)
 %{_bindir}/migration_*
-%{pyver_sitelib}/migration_cycle/
-%attr(0755, root, root) %{pyver_sitelib}/migration_cycle/migration_cycle.py
-%attr(0755, root, root) %{pyver_sitelib}/migration_cycle/migration_manager.py
-%{pyver_sitelib}/*.egg-info
+%{python3_sitelib}/migration_cycle/
+%attr(0755, root, root) %{python3_sitelib}/migration_cycle/migration_cycle.py
+%attr(0755, root, root) %{python3_sitelib}/migration_cycle/migration_manager.py
+%{python3_sitelib}/*.egg-info
 %dir %attr(0755, root, root) %{_sysconfdir}/migration_cycle
 
 %clean
 rm -rf %{buildroot}
 
 %changelog
+* Mon Jun 07 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.8
+- remove configparser dependency
+
 * Fri Jun 04 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.7
 - no-logfile parameter support.
 - User can choose whether to write logs to file or not.
