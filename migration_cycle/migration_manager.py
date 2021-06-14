@@ -612,9 +612,19 @@ def vms_migration(cloud, compute_node, logger):
 
             # convert server obj to dict to get task state
             server_dict = u_server.to_dict()
+
             # check task state
             if server_dict["OS-EXT-STS:task_state"] is None:
                 if u_server.status == "ACTIVE":
+                    # check for large vm
+                    if SKIP_VMS_DISK_SIZE != -1 and server_dict["image"]:
+                        disk_size = server_dict['flavor']['disk']
+                        if disk_size >= SKIP_VMS_DISK_SIZE:
+                            log_event(logger, INFO,
+                                      "[{}][VM bigger than {} GB. Skipping]"
+                                      .format(u_server.name,
+                                              SKIP_VMS_DISK_SIZE))
+                            continue
                     res = live_migration(cloud,
                                          u_server,
                                          compute_node,
@@ -1318,6 +1328,10 @@ def set_global_vars_cli_execution(args):
     global KERNEL_CHECK
     if args.kernel_check:
         KERNEL_CHECK = True
+    # skip large vms
+    global SKIP_VMS_DISK_SIZE
+    if args.skip_vms_disk_size is not None:
+        SKIP_VMS_DISK_SIZE = args.skip_vms_disk_size
 
 
 def set_skip_shutdown_vms_option(config, logger):
@@ -1352,6 +1366,17 @@ def get_kernel_check_config_option(config):
             sys.exit(msg)
     except Exception as e:
         KERNEL_CHECK = False
+
+
+def set_skip_vms_disk_size_option(config, logger):
+    """sets the vm disk size which should be skipped from
+    migration operations"""
+    global SKIP_VMS_DISK_SIZE
+    try:
+        SKIP_VMS_DISK_SIZE = int(config['skip_vms_disk_size'])
+    except Exception:
+        log_event(logger, INFO, "skip_vms_disk_size using default value -1")
+        SKIP_VMS_DISK_SIZE = -1
 
 
 def set_config_uptime_threshold(config):
@@ -1405,6 +1430,7 @@ def config_file_execution(args):
 
     # get kernel check
     get_kernel_check_config_option(config)
+
 
     region = 'cern'
 
@@ -1464,6 +1490,9 @@ def config_file_execution(args):
 
             # skip disabled nodes
             set_skip_disabled_nodes_option(config[cell], logger)
+
+            # set skip vms disk size 
+            set_skip_vms_disk_size_option(config[cell], logger)
 
             # region
             # TODO: to be replaced by cloud whe all code is refactored

@@ -73,6 +73,12 @@ def cli_execution(args):
                         type=lambda x: bool(strtobool(x)),
                         help='check kernel running on HV '
                         'and based on it do reboot')
+    parser.add_argument('--skip-vms-disk-size', dest='skip_vms_disk_size',
+                        default=-1,
+                        type=int,
+                        help='Skip large VMs'
+                        ' takes int as an input.'
+                        ' E.g. "--skip-large-vms 160" where 160 is GB')
 
     if not args:
         parser.print_help()
