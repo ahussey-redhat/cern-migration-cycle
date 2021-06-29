@@ -909,8 +909,9 @@ def reboot_manager(region, host, logger, args):
         kernel_upgrade = kernel_reboot_upgrade(host, logger)
     
     if not kernel_upgrade:
-        log_event(logger, INFO, "[{}][kernel already running latest version]")
-        log_event(logger, INFO, "[{}][reboot not required.]")
+        log_event(logger, INFO, "[{}][kernel already running latest version]"
+                  .format(host))
+        log_event(logger, INFO, "[{}][reboot not required.]".format(host))
 
     # make nova client
     nc = init_nova_client(region, logger)
@@ -1312,6 +1313,11 @@ def set_global_vars_cli_execution(args):
     global SKIP_DISABLED_COMPUTE_NODES
     if args.skip_disabled_compute_nodes is not None:
         SKIP_DISABLED_COMPUTE_NODES = args.skip_disabled_compute_nodes
+    
+    # kernel check
+    global KERNEL_CHECK
+    if args.kernel_check:
+        KERNEL_CHECK = True
 
 
 def set_skip_shutdown_vms_option(config, logger):

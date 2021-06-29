@@ -68,6 +68,11 @@ def cli_execution(args):
                         help='max number of compute nodes to work on at time')
     parser.add_argument('--no-logfile', action='store_true',
                         help='do not write to log file. just output logs.')
+    parser.add_argument('--kernel-check', dest='kernel_check',
+                        default=False,
+                        type=lambda x: bool(strtobool(x)),
+                        help='check kernel running on HV '
+                        'and based on it do reboot')
 
     if not args:
         parser.print_help()
@@ -109,4 +114,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
