@@ -35,9 +35,7 @@ def check_uptime_threshold(compute_node, logger):
         log_event(logger, INFO, "[uptime threshold not defined]")
         return True
     uptime = ssh_uptime([compute_node], logger)
-    if float(uptime[compute_node]) > float(UPTIME_THRESHOLD):
-        return True
-    return False
+    return float(uptime[compute_node]) > float(UPTIME_THRESHOLD)
 
 
 def kernel_reboot_upgrade(host, logger):
@@ -61,10 +59,7 @@ def kernel_reboot_upgrade(host, logger):
                   .format(host, error))
         log_event(logger, ERROR, e)
 
-    if running_kernel != configured_kernel:
-        return True
-    else:
-        return False
+    return running_kernel != configured_kernel
 
 
 def ssh_executor(host, command, logger, connect_timeout=10,
@@ -93,9 +88,8 @@ def ssh_executor(host, command, logger, connect_timeout=10,
         # If we could not connect within time limit
         if retries == 3:
             raise Exception("Could not connect to %s. Giving up." % host)
-        else:
-            retries += 1
-            time.sleep(5)
+        retries += 1
+        time.sleep(5)
 
     # Set ServerAliveInterval if provided
     if keep_alive_interval:
@@ -240,9 +234,7 @@ def get_migration_id(cloud, instance_uuid, logger):
                   .format(instance_uuid))
         return migration_id
     for migration in migration_list:
-        if (migration.status.lower() != 'completed'
-           and migration.status.lower() != 'error'
-           and migration.status.lower() != 'cancelled'):
+        if migration.status.lower() not in ['completed', 'error', 'cancelled']:
             migration_id = migration.id
             break
     return migration_id
@@ -260,9 +252,7 @@ def get_migration_status(cloud, instance_uuid, logger):
                   .format(instance_uuid))
         return migration_status
     for migration in migration_list:
-        if (migration.status.lower() != 'completed'
-           and migration.status.lower() != 'error'
-           and migration.status.lower() != 'cancelled'):
+        if migration.status.lower() not in ['completed', 'error', 'cancelled']:
             migration_status = migration.status.lower()
             break
     return migration_status
@@ -371,13 +361,14 @@ def live_migration(cloud, instance, compute_node, logger):
             return False
 
         # check if live migration cmd was even successful
-        if ins_dict['status'] != "MIGRATING":
-            if compute_node in  \
-                ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname'] \
-                    and ins_dict['status'] == "ACTIVE":
-                log_event(logger, ERROR, "[{}][live migration failed]"
-                          .format(ins_dict['name']))
-                return False
+        if (
+            ins_dict['status'] != "MIGRATING"
+            and compute_node in ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname']
+            and ins_dict['status'] == "ACTIVE"
+        ):
+            log_event(logger, ERROR, "[{}][live migration failed]"
+                      .format(ins_dict['name']))
+            return False
 
         # check if host and status has changed
         if compute_node not in \
@@ -427,7 +418,7 @@ def cold_migration(cloud, instance, compute_node, logger):
     # cold migration checks
     increment = 0
     while MAX_MIGRATION_TIMEOUT > increment:
-        increment = increment + SLEEP_TIME
+        increment += SLEEP_TIME
         time.sleep(SLEEP_TIME)
         # get updated server instance
         instance = get_instance_from_uuid(cloud, instance.id, logger)
@@ -448,11 +439,14 @@ def cold_migration(cloud, instance, compute_node, logger):
             return False
 
         # next wait for RESIZE to VERIFY_RESIZE
-        if ins_dict['status'] == "RESIZE" \
-            and (ins_dict["OS-EXT-STS:task_state"] == "RESIZE_PREP"
-                 or ins_dict["OS-EXT-STS:task_state"] == "RESIZE_MIGRATING"
-                 or ins_dict["OS-EXT-STS:task_state"] == "RESIZE_MIGRATED"
-                 or ins_dict["OS-EXT-STS:task_state"] == "RESIZE_FINISH"):
+        if ins_dict['status'] == "RESIZE" and ins_dict[
+            "OS-EXT-STS:task_state"
+        ] in [
+            "RESIZE_PREP",
+            "RESIZE_MIGRATING",
+            "RESIZE_MIGRATED",
+            "RESIZE_FINISH",
+        ]:
             continue
 
         # if state is VERIFY_RESIZE exit the loop
@@ -478,10 +472,9 @@ def cold_migration(cloud, instance, compute_node, logger):
         return False
     ins_dict = instance.to_dict()
     # Check if host has changed & VM state is back to SHUTOFF or ACTIVE
-    if compute_node not in \
-        ins_dict["OS-EXT-SRV-ATTR:hypervisor_hostname"] \
-            and (ins_dict['status'] == "SHUTOFF" or
-                 ins_dict['status'] == "ACTIVE"):
+    if compute_node not in ins_dict[
+        "OS-EXT-SRV-ATTR:hypervisor_hostname"
+    ] and ins_dict['status'] in ["SHUTOFF", "ACTIVE"]:
         log_event(logger, INFO, "[{}][status][{}]"
                   .format(instance.name, ins_dict['status']))
 
@@ -571,15 +564,20 @@ def vm_list(cloudclient, hypervisor, logger):
         servers = cloudclient.get_servers_by_hypervisor(hypervisor)
         # remove duplicate servers
         servers_set = list()
-        servers_name = list()
+        servers_name = []
         for server in servers:
             if server.name not in servers_name:
                 servers_name.append(server.name)
                 servers_set.append(server)
     except Exception as e:
-        log_event(logger, ERROR,
-                  "[{}][error retrieving VMs from compute node][{}]"
-                  .format(hypervisor, e))
+        log_event(
+            logger,
+            ERROR,
+            '[{}][error retrieving VMs from compute node][{}]'.format(
+                hypervisor, e
+            ),
+        )
+
     return servers_set, servers_name
 
 
@@ -590,10 +588,10 @@ def vms_migration(cloud, compute_node, logger):
     log_event(logger, INFO, "[{}][VMs] {}"
               .format(compute_node, servers_name))
 
-    # get total servers
-    server_count = len(servers)
-    progress = 0
     if servers:
+        # get total servers
+        server_count = len(servers)
+        progress = 0
         for server in servers:
             # progress meter
             progress += 1
@@ -712,8 +710,7 @@ def get_disabled_reason(region, compute_node, logger):
     """Returns the reason why compute node was disabled if specified"""
     nova_client = init_nova_client(region, logger)
     service = nova_client.services.list(compute_node)
-    reason = service[0].disabled_reason
-    return reason
+    return service[0].disabled_reason
 
 
 def disable_compute_node(region, compute_node, logger):
@@ -800,10 +797,7 @@ def ai_reboot_host(host, logger):
     cmd = "ai-remote-power-control cycle " + host
     process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     output, errors = process.communicate()
-    if process.returncode == 0:
-        return True
-    else:
-        return False
+    return process.returncode == 0
 
 
 def ssh_reboot(host, logger):
@@ -826,7 +820,7 @@ def hv_post_reboot_checks(old_uptime, host, logger):
     result = False
     increment = 0
     while MAX_REBOOT_TIMEOUT > increment:
-        increment = increment + SLEEP_TIME
+        increment += SLEEP_TIME
         new_uptime = ssh_uptime([host], logger)
         if bool(new_uptime):
             log_event(logger, INFO,
@@ -847,10 +841,7 @@ def get_ironic_node(region, host, logger):
 
     # returns ironic server
     host = host.replace(".cern.ch", "")
-    search_opts = {}
-    search_opts['name'] = host
-    search_opts['all_tenants'] = True
-
+    search_opts = {'name': host, 'all_tenants': True}
     try:
         ironic_server = (nc.servers.list(search_opts=search_opts))[0]
     except Exception:
@@ -869,10 +860,7 @@ def ironic_check(region, host, logger):
     ironic_server = get_ironic_node(region, host, logger)
 
     # IF not ironic list is Empty
-    if not ironic_server:
-        return False
-    else:
-        return True
+    return bool(ironic_server)
 
 
 def reboot_ironic(host, reboot_type, logger):
@@ -989,10 +977,7 @@ def host_migration(region, host, logger, args):
     # make nova client
     nc = init_nova_client(region, logger)
 
-    if check_uptime_threshold(host, logger):
-        # continue migration
-        pass
-    else:
+    if not check_uptime_threshold(host, logger):
         log_event(logger, INFO, "[{}][uptime less than threshold]"
                   .format(host))
         log_event(logger, INFO, "[{}][skipping the compute node"
@@ -1007,13 +992,14 @@ def host_migration(region, host, logger, args):
 
     # IF skip_disabled_compute_nodes == True . skip disabled nodes.
     # IF skip_disabled_compute_nodes == False. work on disabled nodes.
-    if SKIP_DISABLED_COMPUTE_NODES:
-        if compute_node.state != "up" or compute_node.status != "enabled":
-            log_event(logger, WARNING,
-                      "[{}][compute node is not UP or enabled]"
-                      .format(host))
-            log_event(logger, INFO, "[{}][skipping compute node]".format(host))
-            return
+    if SKIP_DISABLED_COMPUTE_NODES and (
+        compute_node.state != "up" or compute_node.status != "enabled"
+    ):
+        log_event(logger, WARNING,
+                  "[{}][compute node is not UP or enabled]"
+                  .format(host))
+        log_event(logger, INFO, "[{}][skipping compute node]".format(host))
+        return
 
     try:
         disable_compute_node(region, host, logger)
@@ -1045,23 +1031,21 @@ def host_migration(region, host, logger, args):
                       "[{}][reboot FALSE option provided]".format(host))
             log_event(logger, INFO, "[{}][skip reboot]".format(host))
 
-    else:
-        # check if skip_shutdown_vms option provided
-        if SKIP_SHUTDOWN_VMS:
-            log_event(logger, INFO, "[skip_shutdown_vms option provided]")
-            log_event(logger, INFO, "[{}][check if all vms are in shutdown state]"
-                        .format(host))
-            if are_instances_shutdown(region, host, logger):
-                if args.no_reboot:
-                    logger.info("[{}][no_reboot option provided]"
-                                .format(host))
-                else:
-                    reboot_manager(region, host, logger, args)
-            else:
-                logger.info("[{}][vms not in shutoff state. can't reboot]"
+    elif SKIP_SHUTDOWN_VMS:
+        log_event(logger, INFO, "[skip_shutdown_vms option provided]")
+        log_event(logger, INFO, "[{}][check if all vms are in shutdown state]"
+                    .format(host))
+        if are_instances_shutdown(region, host, logger):
+            if args.no_reboot:
+                logger.info("[{}][no_reboot option provided]"
                             .format(host))
+            else:
+                reboot_manager(region, host, logger, args)
         else:
-            logger.info("[{}][still has VMs. can't reboot]".format(host))
+            logger.info("[{}][vms not in shutoff state. can't reboot]"
+                        .format(host))
+    else:
+        logger.info("[{}][still has VMs. can't reboot]".format(host))
 
     # enable compute service
     if COMPUTE_ENABLE:
@@ -1088,14 +1072,10 @@ def host_migration(region, host, logger, args):
 
 
 def create_sorted_uptime_hosts(uptime_dict):
-    # reverse sort by value
-    sorted_list = []
     sorted_dict = sorted(uptime_dict.items(),
                          key=lambda x: x[1],
                          reverse=False)
-    for key, value in sorted_dict:
-        sorted_list.append(key)
-    return sorted_list
+    return [key for key, value in sorted_dict]
 
 
 # SSH into hosts and get uptime
@@ -1158,10 +1138,11 @@ def make_hv_list(hosts, included_nodes, excluded_nodes):
 
     for host in hosts:
         # case 3 : only include list specified
-        if host in included_nodes:
-            hv_list.append(host)
-        # case 4 : only exclude list specified
-        elif host not in excluded_nodes and excluded_nodes:
+        if (
+            host in included_nodes
+            or host not in excluded_nodes
+            and excluded_nodes
+        ):
             hv_list.append(host)
         else:
             continue
