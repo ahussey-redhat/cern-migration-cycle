@@ -1362,8 +1362,7 @@ def set_skip_vms_disk_size_option(config, logger):
 def set_config_uptime_threshold(config):
     global UPTIME_THRESHOLD
     try:
-        uptime = str(config['DEFAULT']['UPTIME_THRESHOLD'])
-        UPTIME_THRESHOLD = uptime
+        UPTIME_THRESHOLD = str(config['DEFAULT']['uptime_threshold'])
     except Exception:
         UPTIME_THRESHOLD = 0
 
@@ -1371,8 +1370,7 @@ def set_config_uptime_threshold(config):
 def get_max_threads_config_option(config):
     global MAX_THREADS
     try:
-        max_threads = config['DEFAULT']['MAX_THREADS']
-        MAX_THREADS = int(max_threads)
+        MAX_THREADS = int(config['DEFAULT']['max_threads'])
     except Exception:
         MAX_THREADS = 1
 
