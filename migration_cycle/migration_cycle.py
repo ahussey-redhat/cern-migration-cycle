@@ -32,9 +32,14 @@ def cli_execution(args):
     parser.add_argument('--cloud', dest='cloud', default='cern',
                         help='cloud in clouds.yaml for the compute nodes')
 
-    parser.add_argument('--reboot', dest='reboot', default=True,
-                        type=lambda x: bool(strtobool(x)),
-                        help='reboot host true/false when host is empty.')
+    parser.add_argument('--power-operation', dest='power_operation',
+                        choices=['reboot', 'poweroff', 'none'],
+                        default='none',
+                        help='''specify power operation that needs to
+                        be performed on node.
+                        reboot : reboot the node
+                        poweroff : shutdown the node
+                        none: no power operation will be performed''')
 
     parser.add_argument('--compute-enable', dest='compute_enable',
                         default=True,

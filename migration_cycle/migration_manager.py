@@ -841,12 +841,21 @@ def ironic_check(region, host, logger):
     return bool(ironic_server)
 
 
+def poweroff_ironic(host, logger):
+    try:
+        host.stop()
+        return True
+    except Exception as e:
+        log_event(logger, ERROR, "[{}][failed to stop ironic server] [{}]"
+                  .format(host, e))
+    return False
+
+
 def reboot_ironic(host, reboot_type, logger):
     try:
-        node = host
         # REBOOT_SOFT, REBOOT_HARD = 'SOFT', 'HARD'
         # set type of reboot
-        node.reboot(reboot_type=reboot_type)
+        host.reboot(reboot_type=reboot_type)
         return True
     except Exception as e:
         log_event(logger, ERROR, "[{}][failed to reboot ironic server] [{}]"
@@ -876,7 +885,18 @@ def cell_migration(region, hosts, cell_name, logger, args):
     pool.join()
 
 
-def reboot_manager(region, host, logger, args):
+def poweroff_manager(region, host, logger):
+    # check if the HV is ironic managed
+    ironic_node = get_ironic_node(region, host, logger)
+    if ironic_node:
+        # ironic managed poweroff
+        if poweroff_ironic(ironic_node, logger):
+            log_event(logger, INFO, "[{}][ironic poweroff success]".format(host))
+        else:
+            log_event(logger, INFO, "[{}][ironic poweroff failed]".format(host))
+
+
+def reboot_manager(region, host, logger):
 
     # kernel check and see if it needs update
     kernel_upgrade = True
@@ -890,8 +910,6 @@ def reboot_manager(region, host, logger, args):
         log_event(logger, INFO, "[{}][reboot not required.]".format(host))
         return
 
-    # make nova client
-    nc = init_nova_client(region, logger)
     # we need list for ssh_uptime
     # get uptime and store it
     old_uptime = ssh_uptime([host], logger)
@@ -1030,27 +1048,32 @@ def host_migration(region, host, logger, args):
     # if there are still vms left don't reboot
     if is_compute_node_empty(region, host, logger):
         if REBOOT:
-            reboot_manager(region, host, logger, args)
+            reboot_manager(region, host, logger)
+        elif POWEROFF:
+            poweroff_manager(region, host, logger)
         else:
             log_event(logger, INFO,
-                      "[{}][reboot FALSE option provided]".format(host))
-            log_event(logger, INFO, "[{}][skip reboot]".format(host))
+                      "[{}][none option provided for power operation]"
+                      .format(host))
+            log_event(logger, INFO, "[{}][skip reboot/poweroff]".format(host))
 
     elif SKIP_SHUTDOWN_VMS:
         log_event(logger, INFO, "[skip_shutdown_vms option provided]")
         log_event(logger, INFO, "[{}][check if all vms are in shutdown state]"
                     .format(host))
         if are_instances_shutdown(region, host, logger):
-            if args.no_reboot:
-                logger.info("[{}][no_reboot option provided]"
-                            .format(host))
+            if REBOOT:
+                reboot_manager(region, host, logger)
+            elif POWEROFF:
+                poweroff_manager(region, host, logger)
             else:
-                reboot_manager(region, host, logger, args)
+                logger.info("[{}][none option provided for power operation]"
+                            .format(host))
         else:
-            logger.info("[{}][vms not in shutoff state. can't reboot]"
+            logger.info("[{}][vms not in shutoff state. can't reboot/poweroff]"
                         .format(host))
     else:
-        logger.info("[{}][still has VMs. can't reboot]".format(host))
+        logger.info("[{}][still has VMs. can't reboot/poweroff]".format(host))
 
     # enable compute service
     if COMPUTE_ENABLE:
@@ -1207,21 +1230,26 @@ def get_excluded_nodes(config, logger):
     return excluded_nodes
 
 
-def set_reboot_config_option(config, logger):
-    global REBOOT
+def set_power_operation_config_option(config, logger):
     try:
-        reboot = config['reboot'].lower().strip()
-        if reboot == 'true':
+        power_op = config['power_operation'].lower().strip()
+        if power_op == 'reboot':
+            global REBOOT
             REBOOT = True
-        elif reboot == 'false':
-            REBOOT = False
+        elif power_op == 'poweroff':
+            global POWEROFF
+            POWEROFF = True
+        elif power_op == 'none':
+            log_event(logger, INFO, 
+                      "none specified, no power operation for {}"
+                      .format(config))
         else:
-            msg = "reboot only takes true/false. {} provided.".format(reboot)
+            msg = "power_operation only takes reboot|poweroff|none."\
+                   " {} provided.".format(config)
             log_event(logger, ERROR, msg)
             sys.exit()
     except Exception:
-        REBOOT = True
-        log_event(logger, INFO, "using default. reboot True")
+        log_event(logger, INFO, "Using default. none power operation")
 
 
 def set_compute_enable_option(config, logger):
@@ -1307,10 +1335,16 @@ def set_global_vars_cli_execution(args):
     if args.roger_enable is not None:
         ROGER_ENABLE = args.roger_enable
 
-    # reboot
-    global REBOOT
-    if args.reboot is not None:
-        REBOOT = args.reboot
+    # power operation
+    if args.power_operation == 'reboot':
+        global REBOOT
+        REBOOT = True
+    elif args.power_operation == 'poweroff':
+        global POWEROFF
+        POWEROFF = True
+    else:
+        REBOOT = False
+        POWEROFF = False
 
     # disable reason
     global DISABLED_REASON
@@ -1487,8 +1521,9 @@ def config_file_execution(args):
             hosts = result.hosts
             hv_list = make_hv_list(hosts, included_nodes, excluded_nodes)
 
-            # reboot
-            set_reboot_config_option(config[cell], logger)
+            # check power operations
+            # reboot | poweroff | none
+            set_power_operation_config_option(config, logger)
 
             # compute_enable
             set_compute_enable_option(config[cell], logger)
