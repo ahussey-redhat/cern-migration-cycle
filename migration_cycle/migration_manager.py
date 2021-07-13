@@ -558,28 +558,6 @@ def empty_hv(cloudclient, hypervisor, logger):
         return True
 
 
-def vm_list(cloudclient, hypervisor, logger):
-    # List of servers
-    try:
-        servers = cloudclient.get_servers_by_hypervisor(hypervisor)
-        # remove duplicate servers
-        servers_set = list()
-        servers_name = []
-        for server in servers:
-            if server.name not in servers_name:
-                servers_name.append(server.name)
-                servers_set.append(server)
-    except Exception as e:
-        log_event(
-            logger,
-            ERROR,
-            '[{}][error retrieving VMs from compute node][{}]'.format(
-                hypervisor, e
-            ),
-        )
-
-    return servers_set, servers_name
-
 
 def vms_migration(cloud, compute_node, logger):
     # List of servers
@@ -974,6 +952,26 @@ def reboot_manager(region, host, logger, args):
                           "[{}][reboot cmd failed]".format(host))
 
 
+def check_big_vm(cloud, compute_node, logger):
+    servers = get_instances(cloud, compute_node, logger)
+    if servers:
+        for server in servers:
+            server_dict = server.to_dict()
+            if (
+                server_dict["OS-EXT-STS:task_state"] is None
+                and server_dict.status == "ACTIVE"
+                and SKIP_VMS_DISK_SIZE != -1
+                and server_dict["image"]
+            ):
+                disk_size = server_dict['flavor']['disk']
+                if disk_size >= SKIP_VMS_DISK_SIZE:
+                    log_event(logger, INFO,
+                              "[{}][VM bigger than {} GB. Skipping]"
+                              .format(server_dict['name'],
+                                      SKIP_VMS_DISK_SIZE))
+                    return True
+    return False
+
 def host_migration(region, host, logger, args):
     # make nova client
     nc = init_nova_client(region, logger)
@@ -1020,6 +1018,12 @@ def host_migration(region, host, logger, args):
         log_event(logger, INFO, "[{}][skipping node]".format(host))
         return
 
+    # check if HV has big VM and skip_large_vm_node is also True
+    # if big VM is found then skip the node
+    if SKIP_LARGE_VM_NODE and check_big_vm(region, host, logger):
+        log_event(logger, INFO, "[{}][skipping big VM node]".format(host))
+        return
+     
     vms_migration(region, host, logger)
 
     # check if migration was successful
@@ -1274,6 +1278,24 @@ def set_skip_disabled_nodes_option(config, logger):
                                 " True")
 
 
+def set_skip_large_vm_node(config, logger):
+    global SKIP_LARGE_VM_NODE
+    try:
+        skip_large_vm_node = config['skip_large_vm_node'].lower().strip()
+        if skip_large_vm_node == 'true':
+            SKIP_LARGE_VM_NODE = True
+        elif skip_large_vm_node == 'false':
+            SKIP_LARGE_VM_NODE = False
+        else:
+            msg = "skip_large_vm_node only supports true/false."
+            " {} provided".format(skip_large_vm_node)
+            log_event(logger, ERROR, msg)
+    except Exception:
+        SKIP_LARGE_VM_NODE = True
+        log_event(logger, INFO, "using default. skip large compute nodes"
+                                " True")
+
+
 def set_global_vars_cli_execution(args):
     # compute_enable
     global COMPUTE_ENABLE
@@ -1309,10 +1331,16 @@ def set_global_vars_cli_execution(args):
     global KERNEL_CHECK
     if args.kernel_check:
         KERNEL_CHECK = True
+
     # skip large vms
     global SKIP_VMS_DISK_SIZE
     if args.skip_vms_disk_size is not None:
         SKIP_VMS_DISK_SIZE = args.skip_vms_disk_size
+
+    # skip_large_vm_node
+    global SKIP_LARGE_VM_NODE
+    if args.skip_large_vm_node is not None:
+        SKIP_LARGE_VM_NODE = args.skip_large_vm_node
 
 
 def set_skip_shutdown_vms_option(config, logger):
@@ -1473,6 +1501,9 @@ def config_file_execution(args):
 
             # set skip vms disk size 
             set_skip_vms_disk_size_option(config[cell], logger)
+
+            # set skip large vm node
+            set_skip_large_vm_node(config[cell], logger)
 
             # region
             # TODO: to be replaced by cloud whe all code is refactored

@@ -79,6 +79,11 @@ def cli_execution(args):
                         help='Skip large VMs'
                         ' takes int as an input.'
                         ' E.g. "--skip-large-vms 160" where 160 is GB')
+    parser.add_argument('--skip-large-vm-node', dest='skip_large_vm_node',
+                        default=True,
+                        type=lambda x: bool(strtobool(x)),
+                        help='skip the whole node if the large VM is found'
+                        'large VM is defined by --skip-vms-disk-size')
 
     if not args:
         parser.print_help()
