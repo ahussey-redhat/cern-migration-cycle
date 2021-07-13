@@ -910,6 +910,7 @@ def reboot_manager(region, host, logger, args):
         log_event(logger, INFO, "[{}][kernel already running latest version]"
                   .format(host))
         log_event(logger, INFO, "[{}][reboot not required.]".format(host))
+        return
 
     # make nova client
     nc = init_nova_client(region, logger)
