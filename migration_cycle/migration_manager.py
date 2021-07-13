@@ -863,10 +863,31 @@ def reboot_ironic(host, reboot_type, logger):
     return False
 
 
-def cell_migration(region, hosts, cell_name, logger, args):
+def get_empty_hosts(region, hosts, logger):
+    """return list of nodes where is_compute_node_empty is True"""
+    return [host for host in hosts if is_compute_node_empty(region, host, logger)]
+
+
+def process_empty_nodes_first(region, empty_hosts, logger):
+    """reboot empty nodes first and return"""
+    empty_hosts_count = len(empty_hosts)
+    count = 1
+    for host in empty_hosts:
+        log_event(logger, INFO, "[working on empty compute node [{}]. ({}/{})]"
+                  .format(host, count, empty_hosts_count))
+        host_migration(region, host, logger)
+        count += 1
+
+
+def cell_migration(region, hosts, cell_name, logger):
     count = 0
     cell_host_count = len(hosts)
     pool = ThreadPool(processes=MAX_THREADS)
+
+    # work on empty hosts first
+    empty_hosts = get_empty_hosts(region, hosts, logger)
+    process_empty_nodes_first(region, empty_hosts, logger)
+
     while hosts:
         # create hypervisor dict with uptime
         hosts_dict = ssh_uptime(hosts, logger)
@@ -879,7 +900,7 @@ def cell_migration(region, hosts, cell_name, logger, args):
         count += 1
         log_event(logger, INFO, "[working on compute node [{}]. ({}/{})]"
                   .format(host, count, cell_host_count))
-        pool.apply_async(host_migration, (region, host, logger, args))
+        pool.apply_async(host_migration, (region, host, logger))
         # host_migration(region, nc, host, logger, args)
     pool.close()
     pool.join()
@@ -990,7 +1011,7 @@ def check_big_vm(cloud, compute_node, logger):
                     return True
     return False
 
-def host_migration(region, host, logger, args):
+def host_migration(region, host, logger):
     # make nova client
     nc = init_nova_client(region, logger)
 
@@ -1554,7 +1575,7 @@ def config_file_execution(args):
             thread = threading.Thread(target=cell_migration,
                                       args=(region, hv_list,
                                             config[cell]['name'],
-                                            logger, args))
+                                            logger))
             thread.start()
             THREAD_MANAGER.append(thread)
 
