@@ -959,7 +959,7 @@ def check_big_vm(cloud, compute_node, logger):
             server_dict = server.to_dict()
             if (
                 server_dict["OS-EXT-STS:task_state"] is None
-                and server_dict.status == "ACTIVE"
+                and server_dict['status'] == "ACTIVE"
                 and SKIP_VMS_DISK_SIZE != -1
                 and server_dict["image"]
             ):
