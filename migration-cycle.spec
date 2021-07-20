@@ -1,5 +1,5 @@
 Name:           migration-cycle
-Version:        0.1.8
+Version:        0.1.9
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -89,6 +89,12 @@ rm /lib/systemd/system/migration_cycle.service
 rm -rf %{buildroot}
 
 %changelog
+* Tue Jul 20 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.9
+- new power operation config option and cli parameter (reboot|poweroff|none)
+- skip large VM defined by user
+- skip compute node if large vm is found
+- kernel check implementation
+
 * Mon Jun 07 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.8
 - remove configparser dependency
 
