@@ -117,7 +117,7 @@ def cli_execution(args):
         log_event(logger, g.INFO, "[{}][--> NEW EXECUTION <--]"
                   .format(host))
 
-        pool.apply_async(host_migration, (region, host, logger, args))
+        pool.apply_async(host_migration, (region, host, logger))
 
     pool.close()
     pool.join()

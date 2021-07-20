@@ -1544,7 +1544,7 @@ def config_file_execution(args):
 
             # check power operations
             # reboot | poweroff | none
-            set_power_operation_config_option(config, logger)
+            set_power_operation_config_option(config[cell], logger)
 
             # compute_enable
             set_compute_enable_option(config[cell], logger)
