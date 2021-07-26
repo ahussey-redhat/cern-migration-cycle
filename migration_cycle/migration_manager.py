@@ -47,6 +47,8 @@ def kernel_reboot_upgrade(host, logger):
 
     try:
         running_kernel, error = ssh_executor(host, r_kernel, logger)
+        log_event(logger, INFO, "[{}][running kernel version {}]"
+                 .format(host, running_kernel))
     except Exception as e:
         log_event(logger, ERROR, "error in checking kernel running on {}. {}"
                   .format(host, error))
@@ -54,6 +56,8 @@ def kernel_reboot_upgrade(host, logger):
 
     try:
         configured_kernel, error = ssh_executor(host, c_kernel, logger)
+        log_event(logger, INFO, "[{}][configured kernel version {}]"
+                  .format(host, configured_kernel))
     except Exception as e:
         log_event(logger, ERROR, "error in checking kernel running on {}. {}"
                   .format(host, error))
@@ -383,12 +387,14 @@ def live_migration(cloud, instance, compute_node, logger):
                       .format(instance.name, ins_dict['status']))
             log_event(logger, INFO,
                       "[{}][live migration duration][{}]"
-                      .format(instance.name, round(time.time() - start_time, 2)))
+                      .format(instance.name,
+                              round(time.time() - start_time, 2)))
             log_event(logger, INFO,
                       "[{}][live migration][finished]"
                       .format(ins_dict['name']))
             if disk_size is not None:
                 transfer_rate = disk_size / round(time.time() - start_time, 2)
+                transfer_rate = round(transfer_rate, 2)
                 log_event(logger, INFO,
                           "[{}][live migration transfer rate {} MB/s]"
                           .format(instance.name, transfer_rate))
@@ -548,7 +554,7 @@ def empty_hv(cloudclient, hypervisor, logger):
 
     if servers:
         log_event(logger, INFO,
-                  "[{}][VMs] {}".format(hypervisor, servers_name))
+                  "[{}][VMs]{}".format(hypervisor, servers_name))
         return False
     else:
         log_event(logger, INFO,
@@ -597,7 +603,7 @@ def vms_migration(cloud, compute_node, logger):
                         disk_size = server_dict['flavor']['disk']
                         if disk_size >= SKIP_VMS_DISK_SIZE:
                             log_event(logger, INFO,
-                                      "[{}][VM bigger than {} GB. Skipping]"
+                                      "[{}][VM size >= {}GB. Skipping]"
                                       .format(u_server.name,
                                               SKIP_VMS_DISK_SIZE))
                             continue
@@ -1152,10 +1158,10 @@ def ssh_uptime(hosts, logger):
             else:
                 continue
 
-        except Exception:
+        except Exception as e:
             log_event(logger, INFO,
-                      "[{}][trying to connect to {} after reboot]"
-                      .format(host, host))
+                      "[{}][failed to connect to {}. {}]"
+                      .format(host, host, e))
     # sort the dict and create list
     return uptime_dict
 
