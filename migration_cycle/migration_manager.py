@@ -48,7 +48,7 @@ def kernel_reboot_upgrade(host, logger):
     try:
         running_kernel, error = ssh_executor(host, r_kernel, logger)
         log_event(logger, INFO, "[{}][running kernel version {}]"
-                 .format(host, running_kernel))
+                  .format(host, running_kernel))
     except Exception as e:
         log_event(logger, ERROR, "error in checking kernel running on {}. {}"
                   .format(host, error))
@@ -924,19 +924,6 @@ def poweroff_manager(region, host, logger):
 
 
 def reboot_manager(region, host, logger):
-
-    # kernel check and see if it needs update
-    kernel_upgrade = True
-    if KERNEL_CHECK:
-        log_event(logger, INFO, "kernel check option provided.")
-        kernel_upgrade = kernel_reboot_upgrade(host, logger)
-    
-    if not kernel_upgrade:
-        log_event(logger, INFO, "[{}][kernel already running latest version]"
-                  .format(host))
-        log_event(logger, INFO, "[{}][reboot not required.]".format(host))
-        return
-
     # we need list for ssh_uptime
     # get uptime and store it
     old_uptime = ssh_uptime([host], logger)
@@ -1018,6 +1005,17 @@ def check_big_vm(cloud, compute_node, logger):
     return False
 
 def host_migration(region, host, logger):
+
+    # kernel check and see if it needs update
+    if KERNEL_CHECK:
+        log_event(logger, INFO, "kernel check option provided.")
+        if not kernel_reboot_upgrade(host, logger):
+            log_event(logger, INFO,
+                      "[{}][kernel already running latest version]"
+                      .format(host))
+        log_event(logger, INFO, "[{}][reboot not required.]".format(host))
+        return
+
     # make nova client
     nc = init_nova_client(region, logger)
 
