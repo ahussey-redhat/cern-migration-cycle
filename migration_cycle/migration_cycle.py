@@ -42,9 +42,12 @@ def cli_execution(args):
                         none: no power operation will be performed''')
 
     parser.add_argument('--compute-enable', dest='compute_enable',
-                        default=True,
-                        type=lambda x: bool(strtobool(x)),
-                        help='enable/disable the compute service after reboot')
+                        choices=['true', 'false', 'noop'],
+                        default='true',
+                        help='enable/disable the compute service after reboot'
+                        'true : enable compute node'
+                        'false : disable compute node'
+                        'noop : keep the original state of compute node')
 
     parser.add_argument('--roger-enable', dest='roger_enable',
                         default=True,

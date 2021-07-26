@@ -130,7 +130,7 @@ def ssh_executor(host, command, logger, connect_timeout=10,
 
 
 def send_email(mail_body):
-    msg = MIMEText(mail_body)   
+    msg = MIMEText(mail_body)
     msg['Subject'] = 'migration cycle service failed'
     mail_from = 'noreply-migration-service@cern.ch'
     msg['From'] = mail_from
@@ -1026,11 +1026,25 @@ def host_migration(region, host, logger):
                   .format(host))
         return
 
+    # check if HV has big VM and skip_large_vm_node is also True
+    # if big VM is found then skip the node
+    if SKIP_LARGE_VM_NODE and check_big_vm(region, host, logger):
+        log_event(logger, INFO,
+                  "[{}][skipping compute node][large VM found]".format(host))
+        return
+
     # get state and status of hypervisor
     # if state == up && status == enabled PROCEED
     # else return
     match = nc.hypervisors.search(host, servers=False, detailed=False)
     compute_node = match[0]
+
+    # if compute_enable is None
+    # maintain the original state of compute node
+    if COMPUTE_ENABLE is None:
+        # store original state of compute node
+        og_compute_node_status = compute_node.status
+
 
     # IF skip_disabled_compute_nodes == True . skip disabled nodes.
     # IF skip_disabled_compute_nodes == False. work on disabled nodes.
@@ -1046,26 +1060,21 @@ def host_migration(region, host, logger):
     try:
         disable_compute_node(region, host, logger)
     except:
-        log_event(logger, INFO, "[{}][skipping node]".format(host))
+        log_event(logger, INFO, "[{}][skipping compute node]".format(host))
         return
 
     # change GNI alarm status via Roger
     # if disable alarm fails revert compute status
-    if not disable_alarm(host, logger):
+    if not disable_alarm(host, logger) and SKIP_DISABLED_COMPUTE_NODES:
         # revert compute status(enable)
         try:
             enable_compute_node(region, host, logger)
         except:
-            log_event(logger, INFO, "[{}][skipping node]".format(host))
+            log_event(logger, INFO, "[{}][skipping compute node]".format(host))
             return
-        log_event(logger, INFO, "[{}][skipping node]".format(host))
+        log_event(logger, INFO, "[{}][skipping compute node]".format(host))
         return
 
-    # check if HV has big VM and skip_large_vm_node is also True
-    # if big VM is found then skip the node
-    if SKIP_LARGE_VM_NODE and check_big_vm(region, host, logger):
-        log_event(logger, INFO, "[{}][skipping big VM node]".format(host))
-        return
      
     vms_migration(region, host, logger)
 
@@ -1101,24 +1110,23 @@ def host_migration(region, host, logger):
         logger.info("[{}][still has VMs. can't reboot/poweroff]".format(host))
 
     # enable compute service
-    if COMPUTE_ENABLE:
-        # enable the compute node
-        try:
-            enable_compute_node(region, host, logger)
-        except:
-            pass
+    if (
+    COMPUTE_ENABLE or (COMPUTE_ENABLE is None and og_compute_node_status == "enabled")
+    ):
+        enable_compute_node(region, host, logger)
+        # enable alarm
+        enable_alarm(host, logger)
+    elif COMPUTE_ENABLE is None:
+        log_event(logger, INFO,
+                  "[{}][compute_enable noop option provided]".format(host))
+        log_event(logger, INFO, "[{}][keep original state]".format(host))
     else:
         log_event(logger, INFO,
                   "[{}][compute_enable FALSE option provided]".format(host))
         log_event(logger, INFO,
                   "[{}][compute service not enabled]".format(host))
 
-    # enable roger alarm
-    if ROGER_ENABLE:
-        # change GNI alarm status via Roger
-        # enable alarm
-        enable_alarm(host, logger)
-    else:
+    if not ROGER_ENABLE:
         log_event(logger, INFO,
                   "[{}][roger_enable FALSE option provided]".format(host))
         log_event(logger, INFO, "[{}][roger alarm not enabled]".format(host))
@@ -1285,8 +1293,10 @@ def set_compute_enable_option(config, logger):
             COMPUTE_ENABLE = True
         elif compute_enable == 'false':
             COMPUTE_ENABLE = False
+        elif compute_enable == 'noop':
+            COMPUTE_ENABLE = None
         else:
-            msg = "compute_enable only supports true/false"\
+            msg = "compute_enable only supports true/false/noop"\
                 " {} provided".format(compute_enable)
             log_event(logger, ERROR, msg)
             sys.exit()
@@ -1352,8 +1362,12 @@ def set_skip_large_vm_node(config, logger):
 def set_global_vars_cli_execution(args):
     # compute_enable
     global COMPUTE_ENABLE
-    if args.compute_enable is not None:
-        COMPUTE_ENABLE = args.compute_enable
+    if args.compute_enable == 'true':
+        COMPUTE_ENABLE = True
+    elif args.compute_enable == 'false':
+        COMPUTE_ENABLE = False
+    else:
+        COMPUTE_ENABLE = None
 
     # roger_enable
     global ROGER_ENABLE
