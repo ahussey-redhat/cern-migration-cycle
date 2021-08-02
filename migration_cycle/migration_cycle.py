@@ -21,6 +21,26 @@ def cli_logger(hostname):
     return logger
 
 
+def validate_scheduling_hours(hour):
+    # default is -1
+    if int(hour) == -1:
+        return hour
+    try:
+        hour = int(hour)
+        if hour < 0 or hour > 23:
+            raise ValueError
+    except ValueError:
+        raise argparse.ArgumentTypeError("scheduling hours must be in 0-23")
+    return hour
+
+
+def validate_scheduling_days(working_days):
+    for w in working_days.split(','):
+        if int(w) < 0 or int(w) > 6:
+            raise argparse.ArgumentTypeError("scheduling days must be in 0-6")
+    return working_days
+
+
 def cli_execution(args):
     parser = argparse.ArgumentParser(description='Migration cycle interface',
                                      formatter_class=argparse.
@@ -92,12 +112,38 @@ def cli_execution(args):
                         type=lambda x: bool(strtobool(x)),
                         help='skip the whole node if the large VM is found'
                         'large VM is defined by --skip-vms-disk-size')
+    parser.add_argument('--scheduling-hour-start', default=-1,
+                        dest='scheduling_hour_start',
+                        type=validate_scheduling_hours,
+                        help='specify starting hour of migration cycle'
+                        ' takes int as an input. Range 0-23'
+                        'E.g. "--start-hour 8"')
+    parser.add_argument('--scheduling-hour-stop', default=-1,
+                        dest='scheduling_hour_stop',
+                        type=validate_scheduling_hours,
+                        help='specify stoping hour of migration cycle'
+                        ' takes int as an input. Range 0-23'
+                        'E.g. "--stop-hour 17"')
+    parser.add_argument('--scheduling-days', dest='scheduling_days',
+                        type=validate_scheduling_days,
+                        help='specify working days of migration cycle'
+                        ' takes comma separated string 0-6'
+                        ' Monday is 0 and Sunday is 6'
+                        ' E.g. "--working-days 0,1,2,3,4"'
+                        ' this will run migration cycle mon-fri')
 
     if not args:
         parser.print_help()
         sys.exit()
 
     args = parser.parse_args()
+    if args.scheduling_hour_start != -1 and args.scheduling_hour_stop == -1:
+        parser.error('--scheduling-hour-stop is required when'
+                     ' --scheduling-hour-start is specified')
+
+    if args.scheduling_hour_stop != -1 and args.scheduling_hour_start == -1:
+        parser.error('--scheduling-hour-start is required when'
+                     ' --scheduling-hour-stop is specified')
 
     set_global_vars_cli_execution(args)
 

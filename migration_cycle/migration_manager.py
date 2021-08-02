@@ -2,13 +2,13 @@
 
 import argparse
 import configparser
+from datetime import datetime
 from migration_cycle.global_vars import *
 import logging
 from multiprocessing.pool import ThreadPool
 import os
 import smtplib
 from email.mime.text import MIMEText
-from datetime import datetime
 import paramiko
 import select
 import subprocess
@@ -1006,6 +1006,14 @@ def check_big_vm(cloud, compute_node, logger):
 
 def host_migration(region, host, logger):
 
+    # check if within working hours
+    if not check_current_time(logger):
+        log_event(logger, INFO, "[{}][not in scheduling hour]".format(host))
+    
+    # check if it's working day
+    if not check_current_day(logger):
+        log_event(logger, INFO, "[{}][not in scheduling day]".format(host))
+
     # kernel check and see if it needs update
     if KERNEL_CHECK:
         log_event(logger, INFO, "kernel check option provided.")
@@ -1359,6 +1367,52 @@ def set_skip_large_vm_node(config, logger):
                                 " True")
 
 
+def check_current_time(logger):
+    if SCHEDULING_HOUR_START == -1 or SCHEDULING_HOUR_STOP == -1:
+        log_event(logger, INFO, "scheduling start/stop hour not defined"
+                  " default execution will run. no time bound")
+        return True
+    current_hour = datetime.now().hour
+    return current_hour >= SCHEDULING_HOUR_START and current_hour <= SCHEDULING_HOUR_STOP
+
+
+def set_scheduling_hour_start(config):
+    global SCHEDULING_HOUR_START
+    try:
+        if int(config['scheduling_hour_start']) < 23:
+            SCHEDULING_HOUR_START = int(config['scheduling_hour_start'])
+    except Exception:
+        SCHEDULING_HOUR_START = -1
+
+
+def set_scheduling_hour_stop(config):
+    global SCHEDULING_HOUR_STOP
+    try:
+        if int(config['scheduling_hour_stop']) < 23:
+            SCHEDULING_HOUR_STOP = int(config['scheduling_hour_stop'])
+    except Exception:
+        SCHEDULING_HOUR_STOP = -1
+
+
+def set_scheduling_days(config):
+    global SCHEDULING_DAYS
+    try:
+        scheduling_days = config['scheduling_days']
+        for w in scheduling_days.split(','):
+            if int(w) >= 0 and int(w) <= 6:
+                SCHEDULING_DAYS.append(int(w))
+    except Exception:
+        SCHEDULING_DAYS = []
+
+def check_current_day(logger):
+    if SCHEDULING_DAYS == []:
+        log_event(logger, INFO, "working days not defined"
+                  " default execution will run. no day bound")
+        return True
+    current_day = datetime.now().weekday()
+    return current_day in SCHEDULING_DAYS
+
+
 def set_global_vars_cli_execution(args):
     # compute_enable
     global COMPUTE_ENABLE
@@ -1414,6 +1468,21 @@ def set_global_vars_cli_execution(args):
     global SKIP_LARGE_VM_NODE
     if args.skip_large_vm_node is not None:
         SKIP_LARGE_VM_NODE = args.skip_large_vm_node
+
+    # SCHEDULING_HOUR_START
+    global SCHEDULING_HOUR_START
+    if args.scheduling_hour_start is not None:
+        SCHEDULING_HOUR_START = int(args.scheduling_hour_start)
+    
+    # SCHEDULING_HOUR_STOP
+    global SCHEDULING_HOUR_STOP
+    if args.scheduling_hour_stop is not None:
+        SCHEDULING_HOUR_STOP = int(args.scheduling_hour_stop)
+    
+    # SCHEDULING_DAYS
+    global SCHEDULING_DAYS
+    if args.scheduling_days is not None:
+        SCHEDULING_DAYS = [int(x) for x in args.scheduling_days.split(',')]
 
 
 def set_skip_shutdown_vms_option(config, logger):
@@ -1490,7 +1559,7 @@ def config_file_execution(args):
                      .format(args.config))
     else:
         # default config /etc/migration_cycle/migration_cycle.conf
-        sys.exit('migration_cycle needs config file. use'
+        sys.exit('migration_manager needs config file. use'
                  ' --config <config-file>.')
 
     # get mailing receipents
@@ -1511,6 +1580,14 @@ def config_file_execution(args):
     # get kernel check
     get_kernel_check_config_option(config)
 
+    # set start hour
+    set_scheduling_hour_start(config)
+
+    # set stop hour
+    set_scheduling_hour_stop(config)
+
+    # set working days
+    set_scheduling_days(config)
 
     region = 'cern'
 
