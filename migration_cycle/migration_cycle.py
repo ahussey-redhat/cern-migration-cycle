@@ -24,7 +24,7 @@ def cli_logger(hostname):
 def validate_scheduling_hours(hour):
     # default is -1
     if int(hour) == -1:
-        return hour
+        return -1
     try:
         hour = int(hour)
         if hour < 0 or hour > 23:

@@ -22,7 +22,6 @@ class Hypervisor:
 class TestMigrationManager(unittest.TestCase):
     def setUp(self):
         self.logger = logging.getLogger('test_migration')
-        self.exec_mode = False
         # self.cloudclient = CloudRegionClient()
         self.server1 = Server('server1', '123')
         self.hypervisor = Hypervisor('hv1', '1234')
