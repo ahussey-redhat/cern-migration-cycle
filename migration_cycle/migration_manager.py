@@ -1672,10 +1672,14 @@ def config_file_execution(args):
                                             config[cell]['name'],
                                             logger))
             thread.start()
+            global THREAD_MANAGER
             THREAD_MANAGER.append(thread)
 
         for th in THREAD_MANAGER:
-            th.join()
+            if th.is_alive():
+                th.join()
+        
+        THREAD_MANAGER = [t for t in THREAD_MANAGER if t.is_alive()]
 
         if not never_stop:
             break
