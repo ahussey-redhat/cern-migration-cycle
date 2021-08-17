@@ -3,12 +3,10 @@
 import argparse
 import configparser
 from datetime import datetime
-from migration_cycle.global_vars import *
+from migration_cycle.utils import *
 import logging
 from multiprocessing.pool import ThreadPool
 import os
-import smtplib
-from email.mime.text import MIMEText
 import paramiko
 import select
 import subprocess
@@ -19,7 +17,6 @@ from novaclient import client as nova_client
 
 from keystoneauth1 import session as keystone_session
 from os_client_config import config as cloud_config
-
 
 # configure logging
 logging.basicConfig(level=logging.INFO,
@@ -129,34 +126,8 @@ def ssh_executor(host, command, logger, connect_timeout=10,
     return total_output, total_error
 
 
-def send_email(mail_body):
-    msg = MIMEText(mail_body)
-    msg['Subject'] = 'migration cycle service failed'
-    mail_from = 'noreply-migration-service@cern.ch'
-    msg['From'] = mail_from
-    msg['To'] = ",".join(MAIL_RECEIPENTS)
-    sendmail_obj = smtplib.SMTP('localhost')
-    sendmail_obj.sendmail(mail_from, MAIL_RECEIPENTS, msg.as_string())
-    sendmail_obj.quit()
-
-
-def log_event(logger, level, msg):
-    if level == 'info':
-        logger.info(msg)
-    elif level == 'warning':
-        logger.warning(msg)
-    elif level == 'debug':
-        logger.debug(msg)
-    elif level == 'error':
-        logger.error(msg)
-        if MAIL_RECEIPENTS:
-            send_email(msg)
-    else:
-        logger.error("invalid log level provided.")
-
-
 def ping_instance(hostname, logger):
-    '''ping instance hostname'''
+    """ping instance hostname"""
 
     cmd = ['ping', '-c', '1', hostname]
     with open(os.devnull, 'w') as DEVNULL:
@@ -165,7 +136,7 @@ def ping_instance(hostname, logger):
                                   stdout=DEVNULL,
                                   stderr=DEVNULL)
             logger.debug("[{} is alive]".format(hostname))
-        except:
+        except Exception:
             logger.info("[{} is unreachable]".format(hostname))
             return False
     return True
@@ -199,12 +170,12 @@ def abort_live_migration(cloud, hostname, logger):
 
 
 def probe_instance_availability(cloud, hostname, interval, logger):
-    '''probes the instance availability (ping) during
-       an interval of time (seconds).'''
+    """probes the instance availability (ping) during
+       an interval of time (seconds)."""
 
     start_time = time.time()
     unavailable_counter = 0
-    while (time.time() < start_time + interval):
+    while time.time() < start_time + interval:
         if not ping_instance(hostname, logger):
             unavailable_counter += 1
         else:
@@ -352,7 +323,7 @@ def live_migration(cloud, instance, compute_node, logger):
         # if status == running get the disk info
         # VM should be booted from image to get disk size.
         if migration_status == 'running' and disk_size is None \
-           and ins_dict["image"]:
+                and ins_dict["image"]:
             disk_size = get_migration_disk_size(cloud, instance.id, logger)
             # convert bytes to MB
             disk_size = disk_size / (1024 ** 2)
@@ -366,9 +337,10 @@ def live_migration(cloud, instance, compute_node, logger):
 
         # check if live migration cmd was even successful
         if (
-            ins_dict['status'] != "MIGRATING"
-            and compute_node in ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname']
-            and ins_dict['status'] == "ACTIVE"
+                ins_dict['status'] != "MIGRATING"
+                and compute_node in
+                ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname']
+                and ins_dict['status'] == "ACTIVE"
         ):
             log_event(logger, ERROR, "[{}][live migration failed]"
                       .format(ins_dict['name']))
@@ -376,7 +348,7 @@ def live_migration(cloud, instance, compute_node, logger):
 
         # check if host and status has changed
         if compute_node not in \
-            ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname'] \
+                ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname'] \
                 and ins_dict['status'] == "ACTIVE":
             log_event(logger, INFO,
                       "[{}][migrated to New Host][{}]".format(
@@ -485,8 +457,8 @@ def cold_migration(cloud, instance, compute_node, logger):
                   .format(instance.name, ins_dict['status']))
 
         log_event(logger, INFO, "[{}][migrated to compute node][{}]"
-                  .format(instance.name, ins_dict[
-                          'OS-EXT-SRV-ATTR:hypervisor_hostname']))
+                  .format(instance.name,
+                          ins_dict['OS-EXT-SRV-ATTR:hypervisor_hostname']))
 
         log_event(logger, INFO, "[{}][migration duration][{}]"
                   .format(instance.name, round(time.time() - start, 2)))
@@ -506,8 +478,8 @@ def get_instances(cloud, compute_node, logger):
     try:
         instances = nc.servers.list(search_opts=search_opts)
     except Exception as e:
-        logger.error("[{}][error in retrieving instances from compute node][{}]"
-                     .format(compute_node, e))
+        logger.error("[{}][error in retrieving instances from compute node]"
+                     "[{}]".format(compute_node, e))
         raise e
     return instances
 
@@ -533,36 +505,6 @@ def are_instances_shutdown(cloud, compute_node, logger):
                       .format(instance.name, instance.status))
             return False
     return True
-
-
-def empty_hv(cloudclient, hypervisor, logger):
-    # List of servers
-    try:
-        servers = cloudclient.get_servers_by_hypervisor(hypervisor)
-        # remove duplicate servers
-        servers_set = []
-        servers_name = []
-        for server in servers:
-            if server.name not in servers_name:
-                servers_name.append(server.name)
-                servers_set.append(server)
-    except Exception as e:
-        log_event(logger, ERROR,
-                  "[{}][error in retrieving servers from compute node][{}]"
-                  .format(hypervisor, e))
-        return True
-
-    if servers:
-        log_event(logger, INFO,
-                  "[{}][VMs]{}".format(hypervisor, servers_name))
-        return False
-    else:
-        log_event(logger, INFO,
-                  "[{}][post migration checks no VMs found]"
-                  .format(hypervisor))
-        log_event(logger, INFO, "[{}][Hypervisor is empty]".format(hypervisor))
-        return True
-
 
 
 def vms_migration(cloud, compute_node, logger):
@@ -711,7 +653,7 @@ def disable_compute_node(region, compute_node, logger):
             dr = DISABLED_REASON
         else:
             date = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
-            dr = "[Migration Cycle] {} working in the node"\
+            dr = "[Migration Cycle] {} working in the node" \
                 .format(date)
     try:
         nova_client.services.disable_log_reason(service_uuid, dr)
@@ -808,11 +750,11 @@ def hv_post_reboot_checks(old_uptime, host, logger):
         new_uptime = ssh_uptime([host], logger)
         if bool(new_uptime):
             log_event(logger, INFO,
-                        "[{}][new uptime][{}]"
-                        .format(host, new_uptime[host]))
-            if(float(old_uptime[host]) > float(new_uptime[host])):
+                      "[{}][new uptime][{}]"
+                      .format(host, new_uptime[host]))
+            if float(old_uptime[host]) > float(new_uptime[host]):
                 log_event(logger, INFO,
-                            "[{}][reboot success]".format(host))
+                          "[{}][reboot success]".format(host))
                 result = True
                 break
         time.sleep(SLEEP_TIME)
@@ -837,9 +779,6 @@ def get_ironic_node(region, host, logger):
 
 
 def ironic_check(region, host, logger):
-    # make nova client
-    nc = init_nova_client(region, logger)
-
     # check if the given host is ironic managed or not
     ironic_server = get_ironic_node(region, host, logger)
 
@@ -871,7 +810,9 @@ def reboot_ironic(host, reboot_type, logger):
 
 def get_empty_hosts(region, hosts, logger):
     """return list of nodes where is_compute_node_empty is True"""
-    return [host for host in hosts if is_compute_node_empty(region, host, logger)]
+    return [host
+            for host in hosts
+            if is_compute_node_empty(region, host, logger)]
 
 
 def process_empty_nodes_first(region, empty_hosts, logger):
@@ -918,9 +859,11 @@ def poweroff_manager(region, host, logger):
     if ironic_node:
         # ironic managed poweroff
         if poweroff_ironic(ironic_node, logger):
-            log_event(logger, INFO, "[{}][ironic poweroff success]".format(host))
+            log_event(logger, INFO,
+                      "[{}][ironic poweroff success]".format(host))
         else:
-            log_event(logger, INFO, "[{}][ironic poweroff failed]".format(host))
+            log_event(logger, INFO,
+                      "[{}][ironic poweroff failed]".format(host))
 
 
 def reboot_manager(region, host, logger):
@@ -949,11 +892,13 @@ def reboot_manager(region, host, logger):
 
         # hypervisor post reboot checks
         if hv_post_reboot_checks(old_uptime, host, logger):
-            log_event(logger, INFO, "[{}]".format(host) +
-                      "[ironic migration and reboot operation success]")
+            log_event(logger, INFO,
+                      "[{}][ironic migration and reboot operation success]"
+                      .format(host))
         else:
-            log_event(logger, INFO, "[{}]".format(host) +
-                      "[ironic migration and reboot operation failed]")
+            log_event(logger, INFO,
+                      "[{}][ironic migration and reboot operation failed]"
+                      .format(host))
 
     # Not managed by Ironic
     else:
@@ -964,9 +909,9 @@ def reboot_manager(region, host, logger):
             if hv_post_reboot_checks(old_uptime, host, logger):
                 log_event(logger, INFO, "[{}][reboot via SSH success]"
                           .format(host))
-                log_event(logger, INFO, "[{}] ".format(host) +
-                          "[migration and reboot operation " +
-                          "successful]")
+                log_event(logger, INFO,
+                          "[{}][migration and reboot operation successful]"
+                          .format(host))
             else:
                 ai_reboot = True
         # if ssh_reboot failed Try with ai-power-control
@@ -976,9 +921,9 @@ def reboot_manager(region, host, logger):
                           "[{}][reboot cmd success]".format(host))
                 # hv post reboot confirmation checks
                 if hv_post_reboot_checks(old_uptime, host, logger):
-                    log_event(logger, INFO, "[{}]".format(host) +
-                              "[migration and reboot operation " +
-                              "successful]")
+                    log_event(logger, INFO,
+                              "[{}][migration and reboot operation successful]"
+                              .format(host))
             else:
                 log_event(logger, ERROR,
                           "[{}][reboot cmd failed]".format(host))
@@ -990,10 +935,10 @@ def check_big_vm(cloud, compute_node, logger):
         for server in servers:
             server_dict = server.to_dict()
             if (
-                server_dict["OS-EXT-STS:task_state"] is None
-                and server_dict['status'] == "ACTIVE"
-                and SKIP_VMS_DISK_SIZE != -1
-                and server_dict["image"]
+                    server_dict["OS-EXT-STS:task_state"] is None
+                    and server_dict['status'] == "ACTIVE"
+                    and SKIP_VMS_DISK_SIZE != -1
+                    and server_dict["image"]
             ):
                 disk_size = server_dict['flavor']['disk']
                 if disk_size >= SKIP_VMS_DISK_SIZE:
@@ -1004,12 +949,12 @@ def check_big_vm(cloud, compute_node, logger):
                     return True
     return False
 
-def host_migration(region, host, logger):
 
+def host_migration(region, host, logger):
     # check if within working hours
     if not check_current_time(logger):
         log_event(logger, INFO, "[{}][not in scheduling hour]".format(host))
-    
+
     # check if it's working day
     if not check_current_day(logger):
         log_event(logger, INFO, "[{}][not in scheduling day]".format(host))
@@ -1053,11 +998,10 @@ def host_migration(region, host, logger):
         # store original state of compute node
         og_compute_node_status = compute_node.status
 
-
     # IF skip_disabled_compute_nodes == True . skip disabled nodes.
     # IF skip_disabled_compute_nodes == False. work on disabled nodes.
     if SKIP_DISABLED_COMPUTE_NODES and (
-        compute_node.state != "up" or compute_node.status != "enabled"
+            compute_node.state != "up" or compute_node.status != "enabled"
     ):
         log_event(logger, WARNING,
                   "[{}][compute node is not UP or enabled]"
@@ -1067,7 +1011,7 @@ def host_migration(region, host, logger):
 
     try:
         disable_compute_node(region, host, logger)
-    except:
+    except Exception:
         log_event(logger, INFO, "[{}][skipping compute node]".format(host))
         return
 
@@ -1077,13 +1021,12 @@ def host_migration(region, host, logger):
         # revert compute status(enable)
         try:
             enable_compute_node(region, host, logger)
-        except:
+        except Exception:
             log_event(logger, INFO, "[{}][skipping compute node]".format(host))
             return
         log_event(logger, INFO, "[{}][skipping compute node]".format(host))
         return
 
-     
     vms_migration(region, host, logger)
 
     # check if migration was successful
@@ -1102,7 +1045,7 @@ def host_migration(region, host, logger):
     elif SKIP_SHUTDOWN_VMS:
         log_event(logger, INFO, "[skip_shutdown_vms option provided]")
         log_event(logger, INFO, "[{}][check if all vms are in shutdown state]"
-                    .format(host))
+                  .format(host))
         if are_instances_shutdown(region, host, logger):
             if REBOOT:
                 reboot_manager(region, host, logger)
@@ -1118,9 +1061,8 @@ def host_migration(region, host, logger):
         logger.info("[{}][still has VMs. can't reboot/poweroff]".format(host))
 
     # enable compute service
-    if (
-    COMPUTE_ENABLE or (COMPUTE_ENABLE is None and og_compute_node_status == "enabled")
-    ):
+    if COMPUTE_ENABLE or (
+            COMPUTE_ENABLE is None and og_compute_node_status == "enabled"):
         enable_compute_node(region, host, logger)
         # enable alarm
         enable_alarm(host, logger)
@@ -1182,7 +1124,6 @@ def ssh_uptime(hosts, logger):
 
 # filter and make hv_list
 def make_hv_list(hosts, included_nodes, excluded_nodes):
-
     # format the lists
     if included_nodes == ['']:
         included_nodes = []
@@ -1208,9 +1149,9 @@ def make_hv_list(hosts, included_nodes, excluded_nodes):
     for host in hosts:
         # case 3 : only include list specified
         if (
-            host in included_nodes
-            or host not in excluded_nodes
-            and excluded_nodes
+                host in included_nodes
+                or host not in excluded_nodes
+                and excluded_nodes
         ):
             hv_list.append(host)
         else:
@@ -1243,171 +1184,19 @@ def init_nova_client(cloud, logger):
     return nc
 
 
-def get_included_nodes(config, logger):
-    included_nodes = ['']
-    try:
-        included_nodes = str(config['include_nodes'])
-        included_nodes = included_nodes.split(',')
-    except Exception:
-        log_event(logger, INFO, "include_nodes not defined in conf."
-                                " Use default")
-
-    # remove any whitespace
-    included_nodes = [x.strip() for x in included_nodes]
-    return included_nodes
-
-
-def get_excluded_nodes(config, logger):
-    excluded_nodes = ['']
-    try:
-        excluded_nodes = str(config['exclude_nodes'])
-        excluded_nodes = excluded_nodes.split(',')
-    except Exception:
-        log_event(logger, INFO, "exclude_nodes not defined in conf."
-                                " Use default")
-
-    # remove any whitespace
-    excluded_nodes = [x.strip() for x in excluded_nodes]
-    return excluded_nodes
-
-
-def set_power_operation_config_option(config, logger):
-    try:
-        power_op = config['power_operation'].lower().strip()
-        if power_op == 'reboot':
-            global REBOOT
-            REBOOT = True
-        elif power_op == 'poweroff':
-            global POWEROFF
-            POWEROFF = True
-        elif power_op == 'none':
-            log_event(logger, INFO, 
-                      "none specified, no power operation for {}"
-                      .format(config))
-        else:
-            msg = "power_operation only takes reboot|poweroff|none."\
-                   " {} provided.".format(config)
-            log_event(logger, ERROR, msg)
-            sys.exit()
-    except Exception:
-        log_event(logger, INFO, "Using default. none power operation")
-
-
-def set_compute_enable_option(config, logger):
-    global COMPUTE_ENABLE
-    try:
-        compute_enable = config['compute_enable'].lower().strip()
-        if compute_enable == 'true':
-            COMPUTE_ENABLE = True
-        elif compute_enable == 'false':
-            COMPUTE_ENABLE = False
-        elif compute_enable == 'noop':
-            COMPUTE_ENABLE = None
-        else:
-            msg = "compute_enable only supports true/false/noop"\
-                " {} provided".format(compute_enable)
-            log_event(logger, ERROR, msg)
-            sys.exit()
-    except Exception:
-        COMPUTE_ENABLE = True
-        log_event(logger, INFO, "using default. compute enable True")
-
-
-def set_roger_enable_option(config, logger):
-    global ROGER_ENABLE
-    try:
-        roger_enable = config['roger_enable'].lower().strip()
-        if roger_enable == 'true':
-            ROGER_ENABLE = True
-        elif roger_enable == 'false':
-            ROGER_ENABLE = False
-        else:
-            msg = "roger_enable only supports true/false."\
-                " {} provided".format(roger_enable)
-            log_event(logger, ERROR, msg)
-    except Exception:
-        ROGER_ENABLE = True
-        log_event(logger, INFO, "using default. roger enable True")
-
-
-def set_skip_disabled_nodes_option(config, logger):
-    global SKIP_DISABLED_COMPUTE_NODES
-    try:
-        skip_disabled_compute_nodes = config['skip_disabled_compute_nodes']\
-            .lower().strip()
-        if skip_disabled_compute_nodes == 'true':
-            SKIP_DISABLED_COMPUTE_NODES = True
-        elif skip_disabled_compute_nodes == 'false':
-            SKIP_DISABLED_COMPUTE_NODES = False
-        else:
-            msg = "skip_disabled_compute_nodes only supports true/false."
-            " {} provided".format(skip_disabled_compute_nodes)
-            log_event(logger, ERROR, msg)
-    except Exception:
-        SKIP_DISABLED_COMPUTE_NODES = True
-        log_event(logger, INFO, "using default. skip disabled compute nodes"
-                                " True")
-
-
-def set_skip_large_vm_node(config, logger):
-    global SKIP_LARGE_VM_NODE
-    try:
-        skip_large_vm_node = config['skip_large_vm_node'].lower().strip()
-        if skip_large_vm_node == 'true':
-            SKIP_LARGE_VM_NODE = True
-        elif skip_large_vm_node == 'false':
-            SKIP_LARGE_VM_NODE = False
-        else:
-            msg = "skip_large_vm_node only supports true/false."
-            " {} provided".format(skip_large_vm_node)
-            log_event(logger, ERROR, msg)
-    except Exception:
-        SKIP_LARGE_VM_NODE = True
-        log_event(logger, INFO, "using default. skip large compute nodes"
-                                " True")
-
-
 def check_current_time(logger):
     if SCHEDULING_HOUR_START == -1 or SCHEDULING_HOUR_STOP == -1:
         log_event(logger, INFO, "scheduling start/stop hour not defined"
-                  " default execution will run. no time bound")
+                                " default execution will run. no time bound")
         return True
     current_hour = datetime.now().hour
-    return current_hour >= SCHEDULING_HOUR_START and current_hour <= SCHEDULING_HOUR_STOP
+    return SCHEDULING_HOUR_START <= current_hour <= SCHEDULING_HOUR_STOP
 
-
-def set_scheduling_hour_start(config):
-    global SCHEDULING_HOUR_START
-    try:
-        if int(config['scheduling_hour_start']) < 23:
-            SCHEDULING_HOUR_START = int(config['scheduling_hour_start'])
-    except Exception:
-        SCHEDULING_HOUR_START = -1
-
-
-def set_scheduling_hour_stop(config):
-    global SCHEDULING_HOUR_STOP
-    try:
-        if int(config['scheduling_hour_stop']) < 23:
-            SCHEDULING_HOUR_STOP = int(config['scheduling_hour_stop'])
-    except Exception:
-        SCHEDULING_HOUR_STOP = -1
-
-
-def set_scheduling_days(config):
-    global SCHEDULING_DAYS
-    try:
-        scheduling_days = config['scheduling_days']
-        for w in scheduling_days.split(','):
-            if int(w) >= 0 and int(w) <= 6:
-                SCHEDULING_DAYS.append(int(w))
-    except Exception:
-        SCHEDULING_DAYS = []
 
 def check_current_day(logger):
-    if SCHEDULING_DAYS == []:
+    if not SCHEDULING_DAYS:
         log_event(logger, INFO, "working days not defined"
-                  " default execution will run. no day bound")
+                                " default execution will run. no day bound")
         return True
     current_day = datetime.now().weekday()
     return current_day in SCHEDULING_DAYS
@@ -1453,7 +1242,7 @@ def set_global_vars_cli_execution(args):
     global SKIP_DISABLED_COMPUTE_NODES
     if args.skip_disabled_compute_nodes is not None:
         SKIP_DISABLED_COMPUTE_NODES = args.skip_disabled_compute_nodes
-    
+
     # kernel check
     global KERNEL_CHECK
     if args.kernel_check:
@@ -1473,77 +1262,16 @@ def set_global_vars_cli_execution(args):
     global SCHEDULING_HOUR_START
     if args.scheduling_hour_start is not None:
         SCHEDULING_HOUR_START = int(args.scheduling_hour_start)
-    
+
     # SCHEDULING_HOUR_STOP
     global SCHEDULING_HOUR_STOP
     if args.scheduling_hour_stop is not None:
         SCHEDULING_HOUR_STOP = int(args.scheduling_hour_stop)
-    
+
     # SCHEDULING_DAYS
     global SCHEDULING_DAYS
     if args.scheduling_days is not None:
         SCHEDULING_DAYS = [int(x) for x in args.scheduling_days.split(',')]
-
-
-def set_skip_shutdown_vms_option(config, logger):
-    global SKIP_SHUTDOWN_VMS
-    try:
-        skip_shutdown = config['skip_shutdown_vms'].lower().strip()
-        if skip_shutdown == 'true':
-            SKIP_SHUTDOWN_VMS = True
-        elif skip_shutdown == 'false':
-            SKIP_SHUTDOWN_VMS = False
-        else:
-            msg = "skip_shutdown_vms only support true/false."
-            " {} provided.".format(skip_shutdown)
-            log_event(logger, ERROR, msg)
-            sys.exit()
-    except Exception:
-        SKIP_SHUTDOWN_VMS = False
-        log_event(logger, INFO, "using default. skip shutdown vms False")
-
-
-def get_kernel_check_config_option(config):
-    global KERNEL_CHECK
-    try:
-        kernel_check = config['DEFAULT']['kernel_check'].lower().strip()
-        if kernel_check == 'true':
-            KERNEL_CHECK = True
-        elif kernel_check == 'false':
-            KERNEL_CHECK = False
-        else:
-            msg = "kernel_check only support true/false."
-            " {} provided.".format(kernel_check)
-            sys.exit(msg)
-    except Exception as e:
-        KERNEL_CHECK = False
-
-
-def set_skip_vms_disk_size_option(config, logger):
-    """sets the vm disk size which should be skipped from
-    migration operations"""
-    global SKIP_VMS_DISK_SIZE
-    try:
-        SKIP_VMS_DISK_SIZE = int(config['skip_vms_disk_size'])
-    except Exception:
-        log_event(logger, INFO, "skip_vms_disk_size using default value -1")
-        SKIP_VMS_DISK_SIZE = -1
-
-
-def set_config_uptime_threshold(config):
-    global UPTIME_THRESHOLD
-    try:
-        UPTIME_THRESHOLD = str(config['DEFAULT']['uptime_threshold'])
-    except Exception:
-        UPTIME_THRESHOLD = 0
-
-
-def get_max_threads_config_option(config):
-    global MAX_THREADS
-    try:
-        MAX_THREADS = int(config['DEFAULT']['max_threads'])
-    except Exception:
-        MAX_THREADS = 1
 
 
 def config_file_execution(args):
@@ -1562,32 +1290,33 @@ def config_file_execution(args):
         sys.exit('migration_manager needs config file. use'
                  ' --config <config-file>.')
 
-    # get mailing receipents
-    try:
-        mail_list = config['DEFAULT']['mail_list']
-        global MAIL_RECEIPENTS
-        MAIL_RECEIPENTS = mail_list.split(',')
-        MAIL_RECEIPENTS = [m.strip() for m in MAIL_RECEIPENTS]
-    except Exception:
-        MAIL_RECEIPENTS = []
+    # get mailing recipient
+    global MAIL_RECIPIENTS
+    MAIL_RECIPIENTS = get_mail_recipients(config)
 
     # set uptime threshold
-    set_config_uptime_threshold(config)
+    global UPTIME_THRESHOLD
+    UPTIME_THRESHOLD = set_config_uptime_threshold(config)
 
     # get max threads
-    get_max_threads_config_option(config)
+    global MAX_THREADS
+    MAX_THREADS = get_max_threads_config_option(config)
 
     # get kernel check
-    get_kernel_check_config_option(config)
+    global KERNEL_CHECK
+    KERNEL_CHECK = get_kernel_check_config_option(config)
 
     # set start hour
-    set_scheduling_hour_start(config)
+    global SCHEDULING_HOUR_START
+    SCHEDULING_HOUR_START = set_scheduling_hour_start(config)
 
     # set stop hour
-    set_scheduling_hour_stop(config)
+    global SCHEDULING_HOUR_STOP
+    SCHEDULING_HOUR_STOP = set_scheduling_hour_stop(config)
 
     # set working days
-    set_scheduling_days(config)
+    global SCHEDULING_DAYS
+    SCHEDULING_DAYS = set_scheduling_days(config)
 
     region = 'cern'
 
@@ -1598,19 +1327,22 @@ def config_file_execution(args):
     elif cycle == 'false':
         never_stop = False
     else:
-        print('The configuration value for DEFAULT/cycle is not correctly ' +
-              'defined. Use true/false.')
+        print('The configuration value for DEFAULT/cycle is not correctly '
+              + 'defined. Use true/false.')
         return
 
+    count = 0
     while True:
         for cell in config.sections():
 
             cell_name = config[cell]['name']
             # create logger
             logfile_name = '/var/log/migration_cycle/' \
-                + 'cell_' + cell_name + '.log'
+                           + 'cell_' + cell_name + '.log'
             # logfile_name = config[cell]['name'] + '.log'
-            logger = setup_logger(cell_name, logfile_name)
+            if count == 0:
+                # prevent multiple logger handlers
+                logger = setup_logger(cell_name, logfile_name)
 
             log_event(logger, INFO, "[{}][--> NEW EXECUTION <--]"
                       .format(cell_name))
@@ -1639,22 +1371,41 @@ def config_file_execution(args):
 
             # check power operations
             # reboot | poweroff | none
-            set_power_operation_config_option(config[cell], logger)
+            global REBOOT
+            global POWEROFF
+            REBOOT, POWEROFF = set_power_operation_config_option(config[cell],
+                                                                 logger)
 
             # compute_enable
-            set_compute_enable_option(config[cell], logger)
+            global COMPUTE_ENABLE
+            COMPUTE_ENABLE = set_compute_enable_option(config[cell],
+                                                       logger)
 
             # roger_enable
-            set_roger_enable_option(config[cell], logger)
+            global ROGER_ENABLE
+            ROGER_ENABLE = set_roger_enable_option(config[cell],
+                                                   logger)
 
             # skip disabled nodes
-            set_skip_disabled_nodes_option(config[cell], logger)
+            global SKIP_DISABLED_COMPUTE_NODES
+            SKIP_DISABLED_COMPUTE_NODES = set_skip_disabled_nodes_option(
+                config[cell],
+                logger)
 
-            # set skip vms disk size 
-            set_skip_vms_disk_size_option(config[cell], logger)
+            # set skip vms disk size
+            global SKIP_VMS_DISK_SIZE
+            SKIP_VMS_DISK_SIZE = set_skip_vms_disk_size_option(config[cell],
+                                                               logger)
 
             # set skip large vm node
-            set_skip_large_vm_node(config[cell], logger)
+            global SKIP_LARGE_VM_NODE
+            SKIP_LARGE_VM_NODE = set_skip_large_vm_node(config[cell],
+                                                        logger)
+
+            # no skip_shutdown_vms
+            global SKIP_SHUTDOWN_VMS
+            SKIP_SHUTDOWN_VMS = set_skip_shutdown_vms_option(config[cell],
+                                                             logger)
 
             # region
             # TODO: to be replaced by cloud whe all code is refactored
@@ -1662,9 +1413,6 @@ def config_file_execution(args):
                 region = config[cell]['region'].lower()
             except Exception:
                 logger.info("region not defined. Using the default 'cern'")
-
-            # no skip_shutdown_vms
-            set_skip_shutdown_vms_option(config[cell], logger)
 
             # perform migration operation
             thread = threading.Thread(target=cell_migration,
@@ -1678,9 +1426,9 @@ def config_file_execution(args):
         for th in THREAD_MANAGER:
             if th.is_alive():
                 th.join()
-        
-        THREAD_MANAGER = [t for t in THREAD_MANAGER if t.is_alive()]
 
+        THREAD_MANAGER = [t for t in THREAD_MANAGER if t.is_alive()]
+        count = 1
         if not never_stop:
             break
 
@@ -1696,7 +1444,7 @@ def main():
     parser.add_argument('--config', dest='config',
                         type=str, required=True,
                         help='specify config file to use.')
-    args = parser.parse_args()        
+    args = parser.parse_args()
     config_file_execution(args)
 
 
