@@ -1,102 +1,69 @@
-import logging
+from migration_cycle import migration_cycle as mc
+import sys
 import unittest
-
-# from ccitools.utils.cloud import CloudRegionClient
-# from novaclient import client as nova_client
-from migration_cycle import migration_manager as mc
+from unittest.mock import patch
 
 
+class TestMigrationCycleCLI(unittest.TestCase):
 
-class Server:
-    def __init__(self, name, id):
-        self.id = id
-        self.name = name
+    def test_cli_logger(self):
+        hostname = "test_cli_logger"
+        logger = mc.cli_logger(hostname)
+        self.assertEqual(hostname, logger.name)
 
+    def test_validate_scheduling_days(self):
+        # valid data
+        w_days = "0,1,2,3,4"
+        self.assertEqual(w_days, mc.validate_scheduling_days(w_days))
 
-class Hypervisor:
-    def __init__(self, name, id):
-        self.name = name
-        self.id = id
+        # invalid data
+        w_days = "0,1,2,3,4,5,6,7"
+        with self.assertRaises(Exception) as context:
+            mc.validate_scheduling_days(w_days)
 
+        self.assertTrue('scheduling days must be in 0-6'
+                        in str(context.exception))
 
-class TestMigrationManager(unittest.TestCase):
-    def setUp(self):
-        self.logger = logging.getLogger('test_migration')
-        # self.cloudclient = CloudRegionClient()
-        self.server1 = Server('server1', '123')
-        self.hypervisor = Hypervisor('hv1', '1234')
-        #self.nc = nova_client.Client(version='2.56',
-        #                             session=self.cloudclient.session,
-        #                             region_name='cern')
+    def test_validate_scheduling_hours(self):
+        # default behaviour
+        hour = "-1"
+        output = mc.validate_scheduling_hours(hour)
+        self.assertEqual(output, -1)
 
-#    def tearDown(self):
-#        if not self._outcome.result.errors and not self._outcome.result.failures:
-#            print("all test case passed !!")
-    
+        # range of 0-23
+        hour = "8"
+        output = mc.validate_scheduling_hours(hour)
+        self.assertEqual(output, 8)
 
-    def test_ping_instance(self):
-        output = mc.ping_instance(self.server1.name, self.logger)
-        self.assertEqual(output, False)
-        
+        # not in range of 0-23
+        hour = "72"
+        with self.assertRaises(Exception) as context:
+            mc.validate_scheduling_hours(hour)
 
-# Include and exclude list test case
-class TestMigrationCycleFilters(unittest.TestCase):
-    def test_make_hv_list_empty(self):
-        self.included_nodes = []
-        self.excluded_nodes = []
-        self.hv_list = ['p693.cern.ch', 'p650.cern.ch', 'p626.cern.ch']
-        self.result =  ['p693.cern.ch', 'p650.cern.ch', 'p626.cern.ch']
+        self.assertTrue('scheduling hours must be in 0-23'
+                        in str(context.exception))
 
-        output = mc.make_hv_list(self.result,
-                                 self.included_nodes,
-                                 self.excluded_nodes)
+    def test_cli_execution_no_args(self):
+        self.args = []
+        with self.assertRaises(SystemExit) as cm:
+            mc.cli_execution(self.args)
+        self.assertEqual(cm.exception.code, None)
 
-        self.assertEqual(output, self.hv_list)
+    def test_cli_execution_args(self):
+        testargs = ["migration_cycle", '--hosts', '123.cern.ch', '--max-threads', '2', '--no-logfile']
+        with patch.object(sys, 'argv', testargs):
+            self.assertEqual(mc.main(), None)
 
-    def test_make_hv_list_included(self):
-        self.included_nodes = ['p693.cern.ch']
-        self.excluded_nodes = []
-        self.hv_list = ['p693.cern.ch']
-        self.result = ['p693.cern.ch', 'p650.cern.ch', 'p626.cern.ch']
-        output = mc.make_hv_list(self.result,
-                                 self.included_nodes,
-                                 self.excluded_nodes)
+    # def test_cli_execution_args_optional(self):
+    #     testargs = ['migration_cycle', '--hosts', '123.cern.ch',
+    #                 '--compute-enable', 'false', '--no-logfile'
+    #                 '--power-operation', 'reboot'
+    #                 '--disable-reason', 'testing'
+    #                 '--skip-shutdown-vms', 'true',
+    #                 '--kernel-check', 'true',
+    #                 '--scheduling-days', '0,1,2,3,4']
+    #     with patch.object(sys, 'argv', testargs):
+    #         self.assertEqual(mc.main(), None) 
 
-        self.assertEqual(output, self.hv_list)
-
-    def test_make_hv_list_excluded(self):
-        self.included_nodes = []
-        self.excluded_nodes = ['p626.cern.ch']
-        self.hv_list = ['p693.cern.ch', 'p650.cern.ch']
-        self.result = ['p693.cern.ch', 'p650.cern.ch', 'p626.cern.ch']
-        output = mc.make_hv_list(self.result,
-                                 self.included_nodes,
-                                 self.excluded_nodes)
-
-        self.assertEqual(output, self.hv_list)
-
-    def test_make_hv_list_no_overlap(self):
-        self.included_nodes = ['p650.cern.ch']
-        self.excluded_nodes = ['p626.cern.ch']
-        self.hv_list = ['p650.cern.ch']
-        self.result = ['p693.cern.ch', 'p650.cern.ch', 'p626.cern.ch']
-        output = mc.make_hv_list(self.result,
-                                 self.included_nodes,
-                                 self.excluded_nodes)
-
-        self.assertEqual(output, self.hv_list)
-
-    def test_make_hv_list_overlap(self):
-        self.included_nodes = ['p693.cern.ch', 'p626.cern.ch', 'p650.cern.ch']
-        self.excluded_nodes = ['p626.cern.ch']
-        self.hv_list = ['p693.cern.ch', 'p650.cern.ch']
-        self.result = ['p693.cern.ch', 'p650.cern.ch', 'p626.cern.ch']
-        output = mc.make_hv_list(self.result,
-                                 self.included_nodes,
-                                 self.excluded_nodes)
-
-        self.assertEqual(output, self.hv_list)
-
-
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     unittest.main()

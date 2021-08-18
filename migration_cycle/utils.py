@@ -14,6 +14,11 @@ def get_mail_recipients(config):
     return mail_recipients
 
 
+def set_mail_recipients(mail_list):
+    global MAIL_RECIPIENTS
+    MAIL_RECIPIENTS = mail_list
+
+
 def send_email(mail_body):
     msg = MIMEText(mail_body)
     msg['Subject'] = 'migration cycle service failed'
@@ -73,31 +78,32 @@ def get_kernel_check_config_option(config):
 
 def set_scheduling_hour_start(config):
     try:
-        if int(config['scheduling_hour_start']) < 23:
-            scheduling_hour_start = int(config['scheduling_hour_start'])
+        if int(config['DEFAULT']['scheduling_hour_start']) < 23:
+            start_hour = int(config['DEFAULT']['scheduling_hour_start'])
     except Exception:
-        scheduling_hour_start = -1
-    return scheduling_hour_start
+        start_hour = -1
+    return start_hour
 
 
 def set_scheduling_hour_stop(config):
     try:
-        if int(config['scheduling_hour_stop']) < 23:
-            scheduling_hour_stop = int(config['scheduling_hour_stop'])
+        if int(config['DEFAULT']['scheduling_hour_stop']) < 23:
+            stop_hour = int(config['DEFAULT']['scheduling_hour_stop'])
     except Exception:
-        scheduling_hour_stop = -1
-    return scheduling_hour_stop
+        stop_hour = -1
+    return stop_hour
 
 
 def set_scheduling_days(config):
+    days = []
     try:
-        scheduling_days = config['scheduling_days']
+        scheduling_days = config['DEFAULT']['scheduling_days']
         for w in scheduling_days.split(','):
             if 0 <= int(w) <= 6:
-                scheduling_days.append(int(w))
+                days.append(int(w))
     except Exception:
-        scheduling_days = []
-    return scheduling_days
+        days = []
+    return days
 
 
 def get_included_nodes(config, logger):
@@ -145,7 +151,7 @@ def set_power_operation_config_option(config, logger):
             msg = "power_operation only takes reboot|poweroff|none." \
                   " {} provided.".format(config)
             log_event(logger, ERROR, msg)
-            sys.exit()
+            sys.exit(msg)
     except Exception:
         log_event(logger, INFO, "Using default. none power operation")
     return reboot, poweroff
@@ -164,7 +170,7 @@ def set_compute_enable_option(config, logger):
             msg = "compute_enable only supports true/false/noop" \
                   " {} provided".format(compute_enable)
             log_event(logger, ERROR, msg)
-            sys.exit()
+            sys.exit(msg)
     except Exception:
         compute_enable = True
         log_event(logger, INFO, "using default. compute enable True")
@@ -182,6 +188,7 @@ def set_roger_enable_option(config, logger):
             msg = "roger_enable only supports true/false." \
                   " {} provided".format(roger_enable)
             log_event(logger, ERROR, msg)
+            sys.exit(msg)
     except Exception:
         roger_enable = True
         log_event(logger, INFO, "using default. roger enable True")
@@ -200,6 +207,7 @@ def set_skip_disabled_nodes_option(config, logger):
             msg = "skip_disabled_compute_nodes only supports true/false."
             " {} provided".format(skip_disabled_compute_nodes)
             log_event(logger, ERROR, msg)
+            sys.exit(msg)
     except Exception:
         skip_disabled_compute_nodes = True
         log_event(logger, INFO, "using default. skip disabled compute nodes"
@@ -229,6 +237,7 @@ def set_skip_large_vm_node(config, logger):
             msg = "skip_large_vm_node only supports true/false."
             " {} provided".format(skip_large_vm_node)
             log_event(logger, ERROR, msg)
+            sys.exit(msg)
     except Exception:
         skip_large_vm_node = True
         log_event(logger, INFO, "using default. skip large compute nodes"
@@ -247,7 +256,7 @@ def set_skip_shutdown_vms_option(config, logger):
             msg = "skip_shutdown_vms only support true/false."
             " {} provided.".format(skip_shutdown_vms)
             log_event(logger, ERROR, msg)
-            sys.exit()
+            sys.exit(msg)
     except Exception:
         skip_shutdown_vms = False
         log_event(logger, INFO, "using default. skip shutdown vms False")

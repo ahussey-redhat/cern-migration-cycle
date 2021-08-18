@@ -1294,6 +1294,9 @@ def config_file_execution(args):
     global MAIL_RECIPIENTS
     MAIL_RECIPIENTS = get_mail_recipients(config)
 
+    # set mailing recipient
+    set_mail_recipients(MAIL_RECIPIENTS)
+
     # set uptime threshold
     global UPTIME_THRESHOLD
     UPTIME_THRESHOLD = set_config_uptime_threshold(config)
