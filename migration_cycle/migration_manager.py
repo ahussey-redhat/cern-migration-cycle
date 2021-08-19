@@ -834,6 +834,8 @@ def cell_migration(region, hosts, cell_name, logger):
     # work on empty hosts first
     empty_hosts = get_empty_hosts(region, hosts, logger)
     process_empty_nodes_first(region, empty_hosts, logger)
+    print("type of hosts : ", hosts)
+    print("dir : ", dir(hosts))
 
     while hosts:
         # create hypervisor dict with uptime
@@ -871,7 +873,7 @@ def reboot_manager(region, host, logger):
     # get uptime and store it
     old_uptime = ssh_uptime([host], logger)
     log_event(logger, DEBUG,
-              "[{}][old uptime] [{}]".format(host, old_uptime[host]))
+              "[{}][old uptime][{}]".format(host, old_uptime))
 
     # check if the HV is ironic managed
     ironic_node = get_ironic_node(region, host, logger)

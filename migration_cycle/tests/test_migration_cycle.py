@@ -50,20 +50,11 @@ class TestMigrationCycleCLI(unittest.TestCase):
         self.assertEqual(cm.exception.code, None)
 
     def test_cli_execution_args(self):
-        testargs = ["migration_cycle", '--hosts', '123.cern.ch', '--max-threads', '2', '--no-logfile']
+        testargs = ["migration_cycle", '--hosts', '123.cern.ch',
+                    '--max-threads', '2', '--no-logfile']
         with patch.object(sys, 'argv', testargs):
             self.assertEqual(mc.main(), None)
 
-    # def test_cli_execution_args_optional(self):
-    #     testargs = ['migration_cycle', '--hosts', '123.cern.ch',
-    #                 '--compute-enable', 'false', '--no-logfile'
-    #                 '--power-operation', 'reboot'
-    #                 '--disable-reason', 'testing'
-    #                 '--skip-shutdown-vms', 'true',
-    #                 '--kernel-check', 'true',
-    #                 '--scheduling-days', '0,1,2,3,4']
-    #     with patch.object(sys, 'argv', testargs):
-    #         self.assertEqual(mc.main(), None) 
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
