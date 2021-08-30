@@ -1,5 +1,5 @@
 Name:           migration-cycle
-Version:        0.1.9
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -89,6 +89,11 @@ rm /lib/systemd/system/migration_cycle.service
 rm -rf %{buildroot}
 
 %changelog
+* Mon Aug 30 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.2.1
+- test cases improved
+- bug fixes
+- utils.py file added that handles config file
+
 * Tue Jul 20 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.1.9
 - new power operation config option and cli parameter (reboot|poweroff|none)
 - skip large VM defined by user
