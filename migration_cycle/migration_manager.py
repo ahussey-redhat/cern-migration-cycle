@@ -69,7 +69,7 @@ def ssh_executor(host, command, logger, connect_timeout=10,
     # Retry a few times if it fails.
     retries = 1
     while True:
-        msg = "Trying to connect to {} ({}/3)".format(host, retries)
+        msg = "Trying to connect to {}".format(host, retries)
         log_event(logger, INFO, msg)
         try:
             client = paramiko.SSHClient()
