@@ -1352,6 +1352,16 @@ def config_file_execution(args):
             log_event(logger, INFO, "[{}][--> NEW EXECUTION <--]"
                       .format(cell_name))
 
+
+            # check if current day and time is in scheduling range
+            if not check_current_day(logger) and check_current_time(logger):
+                log_event(logger, INFO,
+                          "[{}/{}][current day/hour not in working day/hour]"
+                          .format(datetime.now().weekday(),
+                           datetime.now().hour))
+                time.sleep(MAX_DELAY_TIME)
+                return
+
             # get nodes that need to be included
             included_nodes = get_included_nodes(config[cell], logger)
 
