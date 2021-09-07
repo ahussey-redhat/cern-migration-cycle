@@ -19,6 +19,30 @@ def set_mail_recipients(mail_list):
     MAIL_RECIPIENTS = mail_list
 
 
+def get_keytab_file(config):
+    try:
+        keytab_file = config['DEFAULT']['keytab_file']
+    except Exception:
+        keytab_file = ''
+    return keytab_file
+
+
+def get_keytab_user(config):
+    try:
+        keytab_user = config['DEFAULT']['keytab_user']
+    except Exception:
+        keytab_user = ''
+    return keytab_user
+
+
+def get_ticket_lifetime(config):
+    try:
+        ticket_lifetime = config['DEFAULT']['ticket_lifetime']
+    except Exception:
+        ticket_lifetime = '5m'
+    return ticket_lifetime
+
+
 def send_email(mail_body):
     msg = MIMEText(mail_body)
     msg['Subject'] = 'migration cycle service failed'

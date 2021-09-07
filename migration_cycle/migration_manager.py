@@ -682,6 +682,15 @@ def enable_compute_node(region, compute_node, logger):
         raise e
 
 
+def make_ticket(logger):
+    cmd = ["/usr/bin/kinit", "-l",
+           TICKET_LIFETIME, "-kt", KEYTAB_FILE, KEYTAB_USER]
+    if execute_cmd(cmd, logger):
+        log_event(logger, INFO, "ticket created successfully")
+    else:
+        log_event(logger, ERROR, "ticket creation failed")
+
+
 def execute_cmd(cmd, logger):
     with open(os.devnull, 'w') as DEVNULL:
         try:
@@ -699,6 +708,7 @@ def execute_cmd(cmd, logger):
 
 
 def enable_alarm(host, logger):
+    make_ticket(logger)
     cmd = ["/usr/bin/roger", "update", host, "--all_alarms", "true"]
     if execute_cmd(cmd, logger):
         log_event(logger, INFO, "[{}][roger alarm enabled]".format(host))
@@ -709,6 +719,7 @@ def enable_alarm(host, logger):
 
 
 def disable_alarm(host, logger):
+    make_ticket(logger)
     cmd = ["/usr/bin/roger", "update", host, "--all_alarms", "false"]
     if execute_cmd(cmd, logger):
         log_event(logger, INFO, "[{}][roger alarm disabled]".format(host))
@@ -727,6 +738,7 @@ def ai_reboot_host(host, logger):
 
 
 def ssh_reboot(host, logger):
+    make_ticket(logger)
     # ssh into host and send reboot command
     try:
         output, error = ssh_executor(host, "reboot", logger)
@@ -953,6 +965,7 @@ def check_big_vm(cloud, compute_node, logger):
 
 
 def host_migration(region, host, logger):
+
     # check if within working hours
     if not check_current_time(logger):
         log_event(logger, INFO, "[{}][not in scheduling hour]".format(host))
@@ -1093,6 +1106,7 @@ def create_sorted_uptime_hosts(uptime_dict):
 
 # SSH into hosts and get uptime
 def ssh_uptime(hosts, logger):
+    make_ticket(logger)
     uptime_dict = {}
     for host in hosts:
         try:
@@ -1322,6 +1336,18 @@ def config_file_execution(args):
     # set working days
     global SCHEDULING_DAYS
     SCHEDULING_DAYS = set_scheduling_days(config)
+
+    # get keytab file
+    global KEYTAB_FILE
+    KEYTAB_FILE = get_keytab_file(config)
+
+    # get keytab user
+    global KEYTAB_USER
+    KEYTAB_USER = get_keytab_user(config)
+
+    # get ticket lifetime
+    global TICKET_LIFETIME
+    TICKET_LIFETIME = get_ticket_lifetime(config)
 
     region = 'cern'
 

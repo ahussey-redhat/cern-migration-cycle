@@ -24,6 +24,28 @@ class TestMigrationCycleUtils(unittest.TestCase):
         self.assertEqual(['t1@t.com', 't2@t.com'],
                          utils.get_mail_recipients(self.good_config))
 
+    def test_get_keytab_file_fail(self):
+        self.assertEqual('', utils.get_keytab_file(self.bad_config))
+
+    def test_get_keytab_file_pass(self):
+        self.good_config['DEFAULT']['keytab_file'] = 'user.keytab'
+        self.assertEqual('user.keytab',
+                         utils.get_keytab_file(self.good_config))
+
+    def test_get_keytab_user_fail(self):
+        self.assertEqual('', utils.get_keytab_user(self.bad_config))
+
+    def test_get_keytab_user_pass(self):
+        self.good_config['DEFAULT']['keytab_user'] = 'user'
+        self.assertEqual('user', utils.get_keytab_user(self.good_config))
+
+    def test_get_ticket_lifetime_fail(self):
+        self.assertEqual('5m', utils.get_ticket_lifetime(self.bad_config))
+
+    def test_get_ticket_lifetime_pass(self):
+        self.good_config['DEFAULT']['ticket_lifetime'] = '10m'
+        self.assertEqual('10m', utils.get_ticket_lifetime(self.good_config))
+
     def test_set_config_uptime_threshold_fail(self):
         self.assertEqual(0, utils.set_config_uptime_threshold(self.bad_config))
 
