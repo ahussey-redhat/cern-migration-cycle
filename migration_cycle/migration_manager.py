@@ -624,6 +624,9 @@ def get_service_uuid(region, compute_node, logger):
                   .format(compute_node, e))
         raise e
 
+    if not service:
+        log_event(logger, ERROR,
+                  "[failed to get compute service {}]".format(compute_node))
     service_uuid = str(service)
     service_uuid = service_uuid.replace('<Service: ', '')
     service_uuid = service_uuid.replace('[', '')

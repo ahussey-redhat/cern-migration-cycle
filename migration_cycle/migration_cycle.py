@@ -15,6 +15,16 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
+def format_host_input(hosts):
+    hosts_list = []
+    for host in hosts.split():
+        host = host.lower()
+        if "cern.ch" not in host:
+            host = host + ".cern.ch"
+        hosts_list.append(host)
+    return ' '.join(hosts_list)
+
+
 def cli_logger(hostname):
     logger = logging.getLogger(hostname)
     logger.setLevel(logging.INFO)
@@ -47,6 +57,7 @@ def cli_execution(args):
                                      ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--hosts', dest='hosts', required=True,
+                        type=format_host_input,
                         help='select the hosts to empty')
 
     parser.add_argument('--cloud', dest='cloud', default='cern',
