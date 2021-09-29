@@ -1,5 +1,5 @@
 Name:           migration-cycle
-Version:        0.2.1
+Version:        0.2.2
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -89,6 +89,12 @@ rm /lib/systemd/system/migration_cycle.service
 rm -rf %{buildroot}
 
 %changelog
+* Wed Sep 29 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.2.2
+- input sanitization. supports hosts argument without ".cern.ch"
+- bug fixes
+- kerberos ticket support
+- delay migration checks if not in scheduling hour/day
+
 * Mon Aug 30 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.2.1
 - test cases improved
 - bug fixes
