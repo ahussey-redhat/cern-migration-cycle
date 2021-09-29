@@ -685,7 +685,11 @@ def enable_compute_node(region, compute_node, logger):
         raise e
 
 
-def make_ticket(logger):
+def make_kerb5_ticket(logger):
+    # no need to make ticket if running via CLI
+    # ticket already exists
+    if CLI_MODE:
+        return
     cmd = ["/usr/bin/kinit", "-l",
            TICKET_LIFETIME, "-kt", KEYTAB_FILE, KEYTAB_USER]
     if execute_cmd(cmd, logger):
@@ -711,7 +715,7 @@ def execute_cmd(cmd, logger):
 
 
 def enable_alarm(host, logger):
-    make_ticket(logger)
+    make_kerb5_ticket(logger)
     cmd = ["/usr/bin/roger", "update", host, "--all_alarms", "true"]
     if execute_cmd(cmd, logger):
         log_event(logger, INFO, "[{}][roger alarm enabled]".format(host))
@@ -722,7 +726,7 @@ def enable_alarm(host, logger):
 
 
 def disable_alarm(host, logger):
-    make_ticket(logger)
+    make_kerb5_ticket(logger)
     cmd = ["/usr/bin/roger", "update", host, "--all_alarms", "false"]
     if execute_cmd(cmd, logger):
         log_event(logger, INFO, "[{}][roger alarm disabled]".format(host))
@@ -741,7 +745,7 @@ def ai_reboot_host(host, logger):
 
 
 def ssh_reboot(host, logger):
-    make_ticket(logger)
+    make_kerb5_ticket(logger)
     # ssh into host and send reboot command
     try:
         output, error = ssh_executor(host, "reboot", logger)
@@ -1109,7 +1113,7 @@ def create_sorted_uptime_hosts(uptime_dict):
 
 # SSH into hosts and get uptime
 def ssh_uptime(hosts, logger):
-    make_ticket(logger)
+    make_kerb5_ticket(logger)
     uptime_dict = {}
     for host in hosts:
         try:
@@ -1222,6 +1226,11 @@ def check_current_day(logger):
 
 
 def set_global_vars_cli_execution(args):
+    # set cli mode to True
+    # avoid making kerb5_ticket when using cli
+    global CLI_MODE
+    CLI_MODE = True
+
     # compute_enable
     global COMPUTE_ENABLE
     if args.compute_enable == 'true':

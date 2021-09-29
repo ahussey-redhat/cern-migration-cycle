@@ -11,6 +11,7 @@ INFO = 'info'
 WARNING = 'warning'
 ERROR = 'error'
 DEBUG = 'debug'
+CLI_MODE = False
 SKIP_SHUTDOWN_VMS = False
 NC_VERSION = 2.72
 ROGER_ENABLE = True
