@@ -1,5 +1,5 @@
 Name:           migration-cycle
-Version:        0.2.2
+Version:        0.2.3
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -64,8 +64,12 @@ After=multi-user.target
 
 [Service]
 # command to execute when the service is started
-ExecStart=/usr/bin/python /usr/bin/migration_manager --config "/etc/migration_cycle/migration_cycle.conf"
+ExecStart=/usr/bin/python3 /usr/bin/migration_manager --config "/etc/migration_cycle/migration_cycle.conf"
+RestartSec=10
 Restart=always
+
+[Install]
+WantedBy=multi-user.target
 EOT
 systemctl daemon-reload
 # systemctl start migration_cycle.service
@@ -89,6 +93,9 @@ rm /lib/systemd/system/migration_cycle.service
 rm -rf %{buildroot}
 
 %changelog
+* Mon Oct 04 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.2.3
+- migration-cycle.spec service fix
+
 * Wed Sep 29 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.2.2
 - input sanitization. supports hosts argument without ".cern.ch"
 - bug fixes

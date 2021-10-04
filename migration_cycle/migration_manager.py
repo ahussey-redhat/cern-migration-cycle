@@ -1310,9 +1310,9 @@ def config_file_execution(args):
         try:
             # read the provided config file
             config.read(args.config)
-        except Exception:
-            sys.exit('unable to read provided config file. {}'
-                     .format(args.config))
+        except Exception as e:
+            sys.exit('unable to read provided config file {}. {}'
+                     .format(args.config, e))
     else:
         # default config /etc/migration_cycle/migration_cycle.conf
         sys.exit('migration_manager needs config file. use'
