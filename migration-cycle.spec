@@ -65,8 +65,8 @@ After=multi-user.target
 [Service]
 # command to execute when the service is started
 ExecStart=/usr/bin/python3 /usr/bin/migration_manager --config "/etc/migration_cycle/migration_cycle.conf"
-RestartSec=10
-Restart=always
+#RestartSec=10
+#Restart=always
 
 [Install]
 WantedBy=multi-user.target

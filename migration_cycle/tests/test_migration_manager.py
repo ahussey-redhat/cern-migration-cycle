@@ -5,6 +5,7 @@ import sys
 from unittest import mock
 from migration_cycle import migration_manager as mc
 from unittest.mock import patch
+from datetime import datetime
 
 
 class NClient:
@@ -305,7 +306,6 @@ class TestMigrationManager(unittest.TestCase):
                                                         5,
                                                         self.logger))
 
-
     @patch('migration_cycle.migration_manager.init_nova_client')
     def test_get_migration_id(self, mock_inc):
         mock_inc.return_value = self.nclient
@@ -378,6 +378,19 @@ class TestMigrationManager(unittest.TestCase):
     def test_ai_reboot_host(self):
         self.assertEqual(0, mc.ai_reboot_host("host1",
                                               self.logger))
+
+    @patch('time.sleep')
+    def test_check_time_before_migrations(self, mock_sleep):
+        mock_sleep.return_value = None
+        self.assertEqual(True,
+                         mc.check_time_before_migrations(self.server1, self.logger))
+
+    def test_calculate_sleep_time(self):
+        initial_date = datetime.strptime(
+            '2021-10-06 18:20:32', "%Y-%m-%d %H:%M:%S")
+        with mock.patch('migration_cycle.migration_manager.datetime') as mocked_dt:
+            mocked_dt.now.return_value = initial_date
+            self.assertEqual(5, mc.calculate_sleep_time(self.logger))
 
 
 # Include and exclude list test case

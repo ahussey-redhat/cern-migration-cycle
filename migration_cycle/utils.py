@@ -170,10 +170,10 @@ def set_power_operation_config_option(config, logger):
         elif power_op == 'none':
             log_event(logger, INFO,
                       "none specified, no power operation for {}"
-                      .format(config))
+                      .format(config['name']))
         else:
             msg = "power_operation only takes reboot|poweroff|none." \
-                  " {} provided.".format(config)
+                  " {} provided.".format(power_op)
             log_event(logger, ERROR, msg)
             sys.exit(msg)
     except Exception:

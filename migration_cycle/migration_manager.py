@@ -41,24 +41,23 @@ def kernel_reboot_upgrade(host, logger):
     # command to compare running and configured kernel
     r_kernel = "uname -r"
     c_kernel = "grubby --default-kernel | sed 's/^.*vmlinuz-//'"
+    make_kerb5_ticket(logger)
 
     try:
         running_kernel, error = ssh_executor(host, r_kernel, logger)
         log_event(logger, INFO, "[{}][running kernel version {}]"
                   .format(host, running_kernel))
     except Exception as e:
-        log_event(logger, ERROR, "error in checking kernel running on {}. {}"
-                  .format(host, error))
-        log_event(logger, ERROR, e)
+        log_event(logger, ERROR, "[error in checking kernel running on {}. {}]"
+                  .format(host, e))
 
     try:
         configured_kernel, error = ssh_executor(host, c_kernel, logger)
         log_event(logger, INFO, "[{}][configured kernel version {}]"
                   .format(host, configured_kernel))
     except Exception as e:
-        log_event(logger, ERROR, "error in checking kernel running on {}. {}"
-                  .format(host, error))
-        log_event(logger, ERROR, e)
+        log_event(logger, ERROR, "[error in checking kernel running on {}. {}]"
+                  .format(host, e))
 
     return running_kernel != configured_kernel
 
@@ -70,7 +69,7 @@ def ssh_executor(host, command, logger, connect_timeout=10,
     retries = 1
     while True:
         msg = "Trying to connect to {}".format(host, retries)
-        log_event(logger, INFO, msg)
+        log_event(logger, DEBUG, msg)
         try:
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -78,7 +77,7 @@ def ssh_executor(host, command, logger, connect_timeout=10,
                            username="root",
                            timeout=connect_timeout,  # ConnectTimeout 10
                            gss_auth=True)  # use krb to connect
-            log_event(logger, INFO, "Success! Connected to {}".format(host))
+            log_event(logger, DEBUG, "Success! Connected to {}".format(host))
             break
         except paramiko.AuthenticationException:
             msg = "Authentication failed when connecting to {}".format(host)
@@ -97,7 +96,7 @@ def ssh_executor(host, command, logger, connect_timeout=10,
         client.get_transport().set_keepalive(keep_alive_interval)
 
     # Send command
-    log_event(logger, INFO, "Sent command {}".format(command))
+    log_event(logger, DEBUG, "Sent command {}".format(command))
     stdin, stdout, stderr = client.exec_command(command)  # nosec
 
     # Wait for the command to terminate
@@ -118,7 +117,7 @@ def ssh_executor(host, command, logger, connect_timeout=10,
                         % (command, host))
 
     # Close channel
-    log_event(logger, INFO, "Command done! Closing SSH connection.")
+    log_event(logger, DEBUG, "Command done! Closing SSH connection.")
     total_output = stdout.readlines()
     total_error = stderr.readlines()
     client.close()
@@ -247,9 +246,9 @@ def get_migration_disk_size(cloud, instance_uuid, logger):
         disk_size = migration_info.disk_total_bytes
         if disk_size is None:
             disk_size = 0
-    except Exception:
-        log_event(logger, ERROR, "[failed to get disk size of instance {}]"
-                  .format(instance_uuid))
+    except Exception as e:
+        log_event(logger, ERROR, "[failed to get disk size of instance {}][{}]"
+                  .format(instance_uuid, e))
     log_event(logger, INFO, "[{}][disk_total_bytes : {}]"
               .format(instance.name, disk_size))
 
@@ -507,76 +506,106 @@ def are_instances_shutdown(cloud, compute_node, logger):
     return True
 
 
+def calculate_sleep_time(logger):
+    """returns sleep time before starting migrations again"""
+    current_hour = datetime.now().hour
+    hour_difference = current_hour - SCHEDULING_HOUR_START
+    sleep_time = 24 - hour_difference
+    log_event(logger, INFO, "[migration_cycle will sleep for {} hours]"
+              .format(sleep_time))
+    return sleep_time
+
+
+def check_time_before_migrations(instance, logger):
+    """
+    check if within working day and working hour
+    """
+    time_to_migrate = False
+    while not time_to_migrate:
+        if check_current_day(logger) and check_current_time(logger):
+            time_to_migrate = True
+        else:
+            log_event(logger, INFO, "[{}][not within working day/hour]"
+                      .format(instance.name))
+            log_event(logger, INFO, "[current time][{}]"
+                      .format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S")))
+            # sleep for hours ( sec * 3600 = hour)
+            time.sleep(calculate_sleep_time(logger) * 3600)
+    return time_to_migrate
+
+
 def vms_migration(cloud, compute_node, logger):
     # List of servers
-    servers = get_instances(cloud, compute_node, logger)
-    servers_name = [server.name for server in servers]
+    instances = get_instances(cloud, compute_node, logger)
+    instances_name = [instance.name for instance in instances]
     log_event(logger, INFO, "[{}][VMs] {}"
-              .format(compute_node, servers_name))
+              .format(compute_node, instances_name))
 
-    if servers:
-        # get total servers
-        server_count = len(servers)
+    if instances:
+        # get total instances
+        instances_count = len(instances)
         progress = 0
-        for server in servers:
+        for instance in instances:
+            # check schedule day /time
+            check_time_before_migrations(instance, logger)
             # progress meter
             progress += 1
             log_event(logger, INFO, "[working on {}. ({}/{}) VM]"
-                      .format(server.name, progress, server_count))
+                      .format(instance.name, progress, instances_count))
             # get updated VM state each time
             # because migration takes time and
             # other VM state might change in mean time
-            u_server = get_instance_from_uuid(cloud, server.id, logger)
-            if u_server is None:
+            u_instance = get_instance_from_uuid(cloud, instance.id, logger)
+            if u_instance is None:
                 log_event(logger, ERROR,
-                          "[{}][no longer exists/found]".format(server.name))
+                          "[{}][no longer exists/found]".format(instance.name))
                 continue
             log_event(logger, INFO, "[{}][state][{}]"
-                      .format(u_server.name, u_server.status))
+                      .format(u_instance.name, u_instance.status))
 
             # convert server obj to dict to get task state
-            server_dict = u_server.to_dict()
+            instance_dict = u_instance.to_dict()
 
             # check task state
-            if server_dict["OS-EXT-STS:task_state"] is None:
-                if u_server.status == "ACTIVE":
+            if instance_dict["OS-EXT-STS:task_state"] is None:
+                if u_instance.status == "ACTIVE":
                     # check for large vm
-                    if SKIP_VMS_DISK_SIZE != -1 and server_dict["image"]:
-                        disk_size = server_dict['flavor']['disk']
+                    if SKIP_VMS_DISK_SIZE != -1 and instance_dict["image"]:
+                        disk_size = instance_dict['flavor']['disk']
                         if disk_size >= SKIP_VMS_DISK_SIZE:
                             log_event(logger, INFO,
                                       "[{}][VM size >= {}GB. Skipping]"
-                                      .format(u_server.name,
+                                      .format(u_instance.name,
                                               SKIP_VMS_DISK_SIZE))
                             continue
                     res = live_migration(cloud,
-                                         u_server,
+                                         u_instance,
                                          compute_node,
                                          logger)
                     # ping instance after migration success
                     if res:
-                        ping_result = ping_instance(u_server.name, logger)
+                        ping_result = ping_instance(u_instance.name, logger)
                         if not ping_result:
                             logger.warning("[{}][unable to ping after "
                                            "migration]"
                                            .format(u_server.name))
-                elif u_server.status == "SHUTOFF":
+                elif u_instance.status == "SHUTOFF":
                     # do cold migration
                     if SKIP_SHUTDOWN_VMS:
                         log_event(logger, INFO,
                                   "[{}][skip_shutdown_vms option provided]"
-                                  .format(u_server.name))
+                                  .format(u_instance.name))
                         res = False
                     else:
                         # do cold migration
                         res = cold_migration(cloud,
-                                             u_server,
+                                             u_instance,
                                              compute_node,
                                              logger)
                 else:
                     msg = "[{}][failed to migrate]\
                         [not in ACTIVE or SHUTOFF status]".format(
-                        u_server.name)
+                        u_instance.name)
                     log_event(logger, INFO, msg)
                     res = False
                 # store result if false log
@@ -584,15 +613,15 @@ def vms_migration(cloud, compute_node, logger):
                     if SKIP_SHUTDOWN_VMS:
                         log_event(logger, INFO,
                                   "[{}][shutdown state not migrated]"
-                                  .format(u_server.name))
+                                  .format(u_instance.name))
                     else:
                         log_event(logger, INFO,
                                   "[{}][migration failed]"
-                                  .format(u_server.name))
+                                  .format(u_instance.name))
             else:
                 log_event(logger, WARNING,
                           "[{}][can't be migrated. task state not NONE]"
-                          .format(u_server.name))
+                          .format(u_instance.name))
     else:
         log_event(logger, INFO,
                   "[{}][NO VMs in the compute node]".format(compute_node))
@@ -602,7 +631,7 @@ def setup_logger(name, log_file, level=logging.INFO):
     """To setup as many loggers as you want"""
     # time LOG_LEVEL [cell] [compute_node] [Message] [additional msg]
     formatter = logging.Formatter(
-        '%(asctime)s [%(levelname)s] [%(name)s]  %(message)s')
+        '%(asctime)s[%(levelname)s][%(name)s]%(message)s')
     handler = logging.FileHandler(log_file)
     handler.setFormatter(formatter)
 
@@ -693,9 +722,9 @@ def make_kerb5_ticket(logger):
     cmd = ["/usr/bin/kinit", "-l",
            TICKET_LIFETIME, "-kt", KEYTAB_FILE, KEYTAB_USER]
     if execute_cmd(cmd, logger):
-        log_event(logger, INFO, "ticket created successfully")
+        log_event(logger, DEBUG, "[krb5 ticket created successfully]")
     else:
-        log_event(logger, ERROR, "ticket creation failed")
+        log_event(logger, ERROR, "[krb5 ticket creation failed]")
 
 
 def execute_cmd(cmd, logger):
@@ -853,17 +882,15 @@ def cell_migration(region, hosts, cell_name, logger):
     # work on empty hosts first
     empty_hosts = get_empty_hosts(region, hosts, logger)
     process_empty_nodes_first(region, empty_hosts, logger)
-    print("type of hosts : ", hosts)
-    print("dir : ", dir(hosts))
+
+    # create hypervisor dict with uptime
+    hosts_dict = ssh_uptime(hosts, logger)
+    # sort the hypervisors based on their uptime
+    hosts = create_sorted_uptime_hosts(hosts_dict)
+    log_event(logger, INFO, "[{}][cell nodes sorted by uptime{}]"
+              .format(cell_name, hosts))
 
     while hosts:
-        # create hypervisor dict with uptime
-        hosts_dict = ssh_uptime(hosts, logger)
-        # sort the hypervisors based on their uptime
-        hosts = create_sorted_uptime_hosts(hosts_dict)
-        log_event(logger, INFO, "[{}][cell nodes sorted by uptime{}]"
-                  .format(cell_name, hosts))
-
         host = hosts.pop()
         count += 1
         log_event(logger, INFO, "[working on compute node [{}]. ({}/{})]"
@@ -973,23 +1000,15 @@ def check_big_vm(cloud, compute_node, logger):
 
 def host_migration(region, host, logger):
 
-    # check if within working hours
-    if not check_current_time(logger):
-        log_event(logger, INFO, "[{}][not in scheduling hour]".format(host))
-
-    # check if it's working day
-    if not check_current_day(logger):
-        log_event(logger, INFO, "[{}][not in scheduling day]".format(host))
-
     # kernel check and see if it needs update
     if KERNEL_CHECK:
-        log_event(logger, INFO, "kernel check option provided.")
+        log_event(logger, INFO, "[checking kernel version]")
         if not kernel_reboot_upgrade(host, logger):
             log_event(logger, INFO,
                       "[{}][kernel already running latest version]"
                       .format(host))
-        log_event(logger, INFO, "[{}][reboot not required.]".format(host))
-        return
+            log_event(logger, INFO, "[{}][reboot not required]".format(host))
+            return
 
     # make nova client
     nc = init_nova_client(region, logger)
@@ -997,7 +1016,7 @@ def host_migration(region, host, logger):
     if not check_uptime_threshold(host, logger):
         log_event(logger, INFO, "[{}][uptime less than threshold]"
                   .format(host))
-        log_event(logger, INFO, "[{}][skipping the compute node"
+        log_event(logger, INFO, "[{}][skipping the compute node]"
                   .format(host))
         return
 
@@ -1085,9 +1104,12 @@ def host_migration(region, host, logger):
     # enable compute service
     if COMPUTE_ENABLE or (
             COMPUTE_ENABLE is None and og_compute_node_status == "enabled"):
-        enable_compute_node(region, host, logger)
-        # enable alarm
-        enable_alarm(host, logger)
+        # enable alarm and enable compute node
+        # IFF POWEROFF is False
+        if not POWEROFF:
+            enable_compute_node(region, host, logger)
+            enable_alarm(host, logger)
+
     elif COMPUTE_ENABLE is None:
         log_event(logger, INFO,
                   "[{}][compute_enable noop option provided]".format(host))
@@ -1141,7 +1163,6 @@ def ssh_uptime(hosts, logger):
             log_event(logger, INFO,
                       "[{}][failed to connect to {}. {}]"
                       .format(host, host, e))
-    # sort the dict and create list
     return uptime_dict
 
 
@@ -1390,14 +1411,22 @@ def config_file_execution(args):
             log_event(logger, INFO, "[{}][--> NEW EXECUTION <--]"
                       .format(cell_name))
 
-
-            # check if current day and time is in scheduling range
-            if not check_current_day(logger) and check_current_time(logger):
+            # check if current day is in scheduling range
+            if not check_current_day(logger):
                 log_event(logger, INFO,
-                          "[{}/{}][current day/hour not in working day/hour]"
-                          .format(datetime.now().weekday(),
-                           datetime.now().hour))
-                time.sleep(MAX_DELAY_TIME)
+                          "[current day '{}' not in working day range]"
+                          .format(datetime.now().weekday()))
+                if never_stop:
+                    time.sleep(MAX_DELAY_TIME)
+                return
+
+            # check if current hour is in scheduling range
+            if not check_current_time(logger):
+                log_event(logger, INFO,
+                          "[current time '{}' not in working hour range]"
+                          .format(datetime.now().hour))
+                if never_stop:
+                    time.sleep(MAX_DELAY_TIME)
                 return
 
             # get nodes that need to be included
@@ -1465,7 +1494,7 @@ def config_file_execution(args):
             try:
                 region = config[cell]['region'].lower()
             except Exception:
-                logger.info("region not defined. Using the default 'cern'")
+                logger.info("[region not defined. Using the default 'cern']")
 
             # perform migration operation
             thread = threading.Thread(target=cell_migration,
