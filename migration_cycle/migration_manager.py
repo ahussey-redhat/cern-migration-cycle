@@ -3,6 +3,7 @@
 import argparse
 import configparser
 from datetime import datetime
+import json
 from migration_cycle.utils import *
 import logging
 from multiprocessing.pool import ThreadPool
@@ -588,7 +589,7 @@ def vms_migration(cloud, compute_node, logger):
                         if not ping_result:
                             logger.warning("[{}][unable to ping after "
                                            "migration]"
-                                           .format(u_server.name))
+                                           .format(u_instance.name))
                 elif u_instance.status == "SHUTOFF":
                     # do cold migration
                     if SKIP_SHUTDOWN_VMS:
@@ -743,6 +744,23 @@ def execute_cmd(cmd, logger):
     return True
 
 
+def get_roger_alarm_status(host, logger):
+    make_kerb5_ticket(logger)
+    cmd = "/usr/bin/roger show " + host
+    try:
+        process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+        output, _ = process.communicate()
+    except Exception as e:
+        log_event(logger, ERROR,
+                  "[{}][failed to get roger alarm status][{}]"
+                  .format(host, e))
+        raise e
+    if output:
+        output = bytes2str(output)
+        output = json.loads(output)
+    return output[0]["app_alarmed"]
+
+
 def enable_alarm(host, logger):
     make_kerb5_ticket(logger)
     cmd = ["/usr/bin/roger", "update", host, "--all_alarms", "true"]
@@ -889,12 +907,11 @@ def cell_migration(region, hosts, cell_name, logger):
     hosts = create_sorted_uptime_hosts(hosts_dict)
     log_event(logger, INFO, "[{}][cell nodes sorted by uptime{}]"
               .format(cell_name, hosts))
-
+    log_event(logger, INFO, "[total compute nodes : {}]"
+              .format(cell_host_count))
     while hosts:
         host = hosts.pop()
         count += 1
-        log_event(logger, INFO, "[working on compute node [{}]. ({}/{})]"
-                  .format(host, count, cell_host_count))
         pool.apply_async(host_migration, (region, host, logger))
         # host_migration(region, nc, host, logger, args)
     pool.close()
@@ -1039,6 +1056,11 @@ def host_migration(region, host, logger):
         # store original state of compute node
         og_compute_node_status = compute_node.status
 
+    # if roger_enable is None
+    # maintain the original state of roger alarm
+    if ROGER_ENABLE is None:
+        og_roger_alarm_status = get_roger_alarm_status(host, logger)
+
     # IF skip_disabled_compute_nodes == True . skip disabled nodes.
     # IF skip_disabled_compute_nodes == False. work on disabled nodes.
     if SKIP_DISABLED_COMPUTE_NODES and (
@@ -1104,11 +1126,10 @@ def host_migration(region, host, logger):
     # enable compute service
     if COMPUTE_ENABLE or (
             COMPUTE_ENABLE is None and og_compute_node_status == "enabled"):
-        # enable alarm and enable compute node
+        # enable compute node
         # IFF POWEROFF is False
         if not POWEROFF:
             enable_compute_node(region, host, logger)
-            enable_alarm(host, logger)
 
     elif COMPUTE_ENABLE is None:
         log_event(logger, INFO,
@@ -1120,7 +1141,18 @@ def host_migration(region, host, logger):
         log_event(logger, INFO,
                   "[{}][compute service not enabled]".format(host))
 
-    if not ROGER_ENABLE:
+    # enable roger alarm
+    if ROGER_ENABLE or (
+            ROGER_ENABLE is None and og_roger_alarm_status):
+        # enable alarm
+        # IFF POWEROFF is False
+        if not POWEROFF:
+            enable_alarm(host, logger)
+    elif ROGER_ENABLE is None:
+        log_event(logger, INFO,
+                  "[{}][roger_enable noop option provided]".format(host))
+        log_event(logger, INFO, "[{}][keep original state]".format(host))
+    else:
         log_event(logger, INFO,
                   "[{}][roger_enable FALSE option provided]".format(host))
         log_event(logger, INFO, "[{}][roger alarm not enabled]".format(host))
@@ -1510,6 +1542,8 @@ def config_file_execution(args):
                 th.join()
 
         THREAD_MANAGER = [t for t in THREAD_MANAGER if t.is_alive()]
+        if not THREAD_MANAGER:
+            log_event(logger, INFO, "[migration cycle finished]")
         count = 1
         if not never_stop:
             break

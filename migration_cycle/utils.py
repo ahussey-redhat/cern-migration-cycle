@@ -4,6 +4,14 @@ import smtplib
 from email.mime.text import MIMEText
 
 
+def bytes2str(text, encoding='utf-8'):
+    """Converts bytes to Unicode string by removing all non Unicode char
+    text: binary string to work on
+    encoding: output encoding *utf-8"""
+
+    return text.decode(encoding, 'ignore')
+
+
 def get_mail_recipients(config):
     try:
         mail_list = config['DEFAULT']['mail_list']
@@ -196,8 +204,8 @@ def set_compute_enable_option(config, logger):
             log_event(logger, ERROR, msg)
             sys.exit(msg)
     except Exception:
-        compute_enable = True
-        log_event(logger, INFO, "using default. compute enable True")
+        compute_enable = None
+        log_event(logger, INFO, "using default. compute enable noop")
     return compute_enable
 
 
@@ -208,14 +216,16 @@ def set_roger_enable_option(config, logger):
             roger_enable = True
         elif roger_enable == 'false':
             roger_enable = False
+        elif roger_enable == 'noop':
+            roger_enable = None
         else:
-            msg = "roger_enable only supports true/false." \
+            msg = "roger_enable only supports true/false/noop" \
                   " {} provided".format(roger_enable)
             log_event(logger, ERROR, msg)
             sys.exit(msg)
     except Exception:
-        roger_enable = True
-        log_event(logger, INFO, "using default. roger enable True")
+        roger_enable = None
+        log_event(logger, INFO, "using default. roger enable noop")
     return roger_enable
 
 

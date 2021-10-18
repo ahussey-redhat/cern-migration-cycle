@@ -81,9 +81,12 @@ def cli_execution(args):
                         'noop : keep the original state of compute node')
 
     parser.add_argument('--roger-enable', dest='roger_enable',
-                        default=True,
-                        type=lambda x: bool(strtobool(x)),
-                        help='enable/disable roger after reboot')
+                        choices=['true', 'false', 'noop'],
+                        default='true',
+                        help='enable/disable the roger alarm after reboot'
+                        'true : enable roger alarm'
+                        'false : disable roger alarm'
+                        'noop : keep the original state of roger alarm')
 
     parser.add_argument('--disable-reason', dest='disable_reason',
                         help='disable reason to use in the service')

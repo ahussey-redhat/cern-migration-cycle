@@ -174,7 +174,7 @@ class TestMigrationCycleUtils(unittest.TestCase):
                         in str(cm.exception))
 
     def test_set_compute_enable_option_fail(self):
-        self.assertEqual(True,
+        self.assertEqual(None,
                          utils.
                          set_compute_enable_option(self.bad_config,
                                                    self.logger))
@@ -211,7 +211,7 @@ class TestMigrationCycleUtils(unittest.TestCase):
                         in str(cm.exception))
 
     def test_set_roger_enable_option_fail(self):
-        self.assertEqual(True,
+        self.assertEqual(None,
                          utils.
                          set_roger_enable_option(self.bad_config, self.logger))
 
@@ -233,7 +233,7 @@ class TestMigrationCycleUtils(unittest.TestCase):
         with self.assertRaises(SystemExit) as cm:
             utils.set_roger_enable_option(self.good_config['test_cell'],
                                           self.logger)
-        self.assertTrue('roger_enable only supports true/false.'
+        self.assertTrue('roger_enable only supports true/false/noop'
                         in str(cm.exception))
 
     def test_set_skip_disabled_nodes_option_fail(self):
@@ -333,6 +333,10 @@ class TestMigrationCycleUtils(unittest.TestCase):
                                                self.logger)
         self.assertTrue('skip_shutdown_vms only support true/false.'
                         in str(cm.exception))
+
+    def test_bytes2str(self):
+        byte_message = bytes("migration cycle test", 'utf-8')
+        self.assertEqual("migration cycle test", utils.bytes2str(byte_message))
 
 
 if __name__ == "__main__":  # pragma: no cover
