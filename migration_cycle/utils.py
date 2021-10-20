@@ -204,8 +204,8 @@ def set_compute_enable_option(config, logger):
             log_event(logger, ERROR, msg)
             sys.exit(msg)
     except Exception:
-        compute_enable = None
-        log_event(logger, INFO, "using default. compute enable noop")
+        compute_enable = True
+        log_event(logger, INFO, "using default. compute enable true")
     return compute_enable
 
 
@@ -224,8 +224,8 @@ def set_roger_enable_option(config, logger):
             log_event(logger, ERROR, msg)
             sys.exit(msg)
     except Exception:
-        roger_enable = None
-        log_event(logger, INFO, "using default. roger enable noop")
+        roger_enable = True
+        log_event(logger, INFO, "using default. roger enable true")
     return roger_enable
 
 

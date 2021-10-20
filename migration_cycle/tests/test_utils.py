@@ -174,7 +174,7 @@ class TestMigrationCycleUtils(unittest.TestCase):
                         in str(cm.exception))
 
     def test_set_compute_enable_option_fail(self):
-        self.assertEqual(None,
+        self.assertEqual(True,
                          utils.
                          set_compute_enable_option(self.bad_config,
                                                    self.logger))
@@ -211,7 +211,7 @@ class TestMigrationCycleUtils(unittest.TestCase):
                         in str(cm.exception))
 
     def test_set_roger_enable_option_fail(self):
-        self.assertEqual(None,
+        self.assertEqual(True,
                          utils.
                          set_roger_enable_option(self.bad_config, self.logger))
 

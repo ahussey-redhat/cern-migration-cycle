@@ -1295,8 +1295,12 @@ def set_global_vars_cli_execution(args):
 
     # roger_enable
     global ROGER_ENABLE
-    if args.roger_enable is not None:
-        ROGER_ENABLE = args.roger_enable
+    if args.roger_enable == 'true':
+        ROGER_ENABLE = True
+    elif args.roger_enable == 'false':
+        ROGER_ENABLE = False
+    else:
+        ROGER_ENABLE = None
 
     # power operation
     if args.power_operation == 'reboot':

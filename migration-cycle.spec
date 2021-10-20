@@ -1,5 +1,5 @@
 Name:           migration-cycle
-Version:        0.2.3
+Version:        0.2.4
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -93,6 +93,13 @@ rm /lib/systemd/system/migration_cycle.service
 rm -rf %{buildroot}
 
 %changelog
+* Thu Oct 21 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.2.4
+- kerb5 ticket was not made in kernel_reboot_upgrade, thus results in failure
+- poweroff bug fix. Compute and roger alarm will not be enabled if poweroff is provided
+- sleep migration_cycle if not in working hours. sleep based on time difference
+- logging improved
+- roger_enable noop option added
+
 * Mon Oct 04 2021 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.2.3
 - migration-cycle.spec service fix
 
