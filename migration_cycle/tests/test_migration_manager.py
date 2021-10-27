@@ -120,13 +120,16 @@ class TestMigrationManager(unittest.TestCase):
         self.assertEqual(output, False)
 
     def test_check_uptime_threshold(self):
+        uptime = {'host1.cern.ch': 500}
         self.assertEqual(True,
                          mc.
-                         check_uptime_threshold(self.hypervisor, self.logger))
+                         check_uptime_threshold(self.hypervisor,
+                                                uptime,
+                                                self.logger))
 
     def test_setup_logger(self):
-        self.logger.name = "test-logger"
-        output = mc.setup_logger('test-logger', 'test.log')
+        self.logger.name="test-logger"
+        output=mc.setup_logger('test-logger', 'test.log')
         self.assertEqual(self.logger.name, output.name)
 
     def test_execute_cmd(self):
@@ -150,7 +153,7 @@ class TestMigrationManager(unittest.TestCase):
                                                  self.logger))
 
     def test_create_sorted_uptime_hosts(self):
-        uptime_dict = {'host1.cern.ch': 500, 'host2.cern.ch': 1700,
+        uptime_dict={'host1.cern.ch': 500, 'host2.cern.ch': 1700,
                        'host3.cern.ch': 200}
         self.assertEqual(['host3.cern.ch', 'host1.cern.ch', 'host2.cern.ch'],
                          mc.create_sorted_uptime_hosts(uptime_dict))
@@ -247,9 +250,10 @@ class TestMigrationManager(unittest.TestCase):
         mock_ssh.return_value = [old_uptime]
         mock_ironic.return_value = host
         mock_hprc.return_value = True
-        self.assertEqual(None,
+        self.assertEqual(True,
                          mc.reboot_manager('region',
                                            self.hypervisor,
+                                           old_uptime,
                                            self.logger))
 
     @patch('migration_cycle.migration_manager.ssh_executor')

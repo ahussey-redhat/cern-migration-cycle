@@ -26,13 +26,12 @@ logging.basicConfig(level=logging.INFO,
 THREAD_MANAGER = []
 
 
-def check_uptime_threshold(compute_node, logger):
+def check_uptime_threshold(compute_node, uptime, logger):
     """ returns True if compute_node has been up for
     more than a certain uptime threshold."""
     if float(UPTIME_THRESHOLD) == 0:
         log_event(logger, INFO, "[uptime threshold not defined]")
         return True
-    uptime = ssh_uptime([compute_node], logger)
     return float(uptime[compute_node]) > float(UPTIME_THRESHOLD)
 
 
@@ -661,7 +660,8 @@ def get_service_uuid(region, compute_node, logger):
     service_uuid = service_uuid.replace('<Service: ', '')
     service_uuid = service_uuid.replace('[', '')
     service_uuid = service_uuid.replace('>]', '')
-    log_event(logger, INFO, "[compute service uuid: {}]".format(service_uuid))
+    log_event(logger, INFO, "[{}][compute service uuid: {}]"
+              .format(compute_node, service_uuid))
     return service_uuid
 
 
@@ -884,12 +884,13 @@ def get_empty_hosts(region, hosts, logger):
 def process_empty_nodes_first(region, empty_hosts, logger):
     """reboot empty nodes first and return"""
     empty_hosts_count = len(empty_hosts)
-    count = 1
+    log_event(logger, INFO, "[total empty compute nodes {}]"
+              .format(empty_hosts_count))
+    pool = ThreadPool(processes=MAX_THREADS)
     for host in empty_hosts:
-        log_event(logger, INFO, "[working on empty compute node [{}]. ({}/{})]"
-                  .format(host, count, empty_hosts_count))
-        host_migration(region, host, logger)
-        count += 1
+        pool.apply_async(host_migration, (region, host, logger))
+    pool.close()
+    pool.join()
 
 
 def cell_migration(region, hosts, cell_name, logger):
@@ -931,12 +932,11 @@ def poweroff_manager(region, host, logger):
                       "[{}][ironic poweroff failed]".format(host))
 
 
-def reboot_manager(region, host, logger):
-    # we need list for ssh_uptime
-    # get uptime and store it
-    old_uptime = ssh_uptime([host], logger)
+def reboot_manager(region, host, uptime, logger):
     log_event(logger, DEBUG,
-              "[{}][old uptime][{}]".format(host, old_uptime))
+              "[{}][old uptime][{}]".format(host, uptime))
+
+    reboot_result = False
 
     # check if the HV is ironic managed
     ironic_node = get_ironic_node(region, host, logger)
@@ -956,42 +956,18 @@ def reboot_manager(region, host, logger):
             log_event(logger, INFO, "[{}][reboot cmd failed]".format(host))
 
         # hypervisor post reboot checks
-        if hv_post_reboot_checks(old_uptime, host, logger):
+        if hv_post_reboot_checks(uptime, host, logger):
             log_event(logger, INFO,
                       "[{}][ironic migration and reboot operation success]"
                       .format(host))
+            reboot_result = True
         else:
-            log_event(logger, INFO,
+            log_event(logger, ERROR,
                       "[{}][ironic migration and reboot operation failed]"
                       .format(host))
-
-    # Not managed by Ironic
     else:
-        ai_reboot = False
-        # first try reboot by doing SSH
-        if ssh_reboot(host, logger):
-            # hv post reboot confirmation checks
-            if hv_post_reboot_checks(old_uptime, host, logger):
-                log_event(logger, INFO, "[{}][reboot via SSH success]"
-                          .format(host))
-                log_event(logger, INFO,
-                          "[{}][migration and reboot operation successful]"
-                          .format(host))
-            else:
-                ai_reboot = True
-        # if ssh_reboot failed Try with ai-power-control
-        if ai_reboot:
-            if ai_reboot_host(host, logger):
-                log_event(logger, INFO,
-                          "[{}][reboot cmd success]".format(host))
-                # hv post reboot confirmation checks
-                if hv_post_reboot_checks(old_uptime, host, logger):
-                    log_event(logger, INFO,
-                              "[{}][migration and reboot operation successful]"
-                              .format(host))
-            else:
-                log_event(logger, ERROR,
-                          "[{}][reboot cmd failed]".format(host))
+        log_event(logger, INFO, "[{}][failed to get ironic node]".format(host))
+    return reboot_result
 
 
 def check_big_vm(cloud, compute_node, logger):
@@ -1019,7 +995,7 @@ def host_migration(region, host, logger):
 
     # kernel check and see if it needs update
     if KERNEL_CHECK:
-        log_event(logger, INFO, "[checking kernel version]")
+        log_event(logger, INFO, "[{}][checking kernel version]".format(host))
         if not kernel_reboot_upgrade(host, logger):
             log_event(logger, INFO,
                       "[{}][kernel already running latest version]"
@@ -1030,7 +1006,10 @@ def host_migration(region, host, logger):
     # make nova client
     nc = init_nova_client(region, logger)
 
-    if not check_uptime_threshold(host, logger):
+    # save old/original uptime
+    uptime = ssh_uptime([host], logger)
+
+    if not check_uptime_threshold(host, uptime, logger):
         log_event(logger, INFO, "[{}][uptime less than threshold]"
                   .format(host))
         log_event(logger, INFO, "[{}][skipping the compute node]"
@@ -1092,11 +1071,13 @@ def host_migration(region, host, logger):
 
     vms_migration(region, host, logger)
 
+    # reboot result
+    reboot_result = True
     # check if migration was successful
     # if there are still vms left don't reboot
     if is_compute_node_empty(region, host, logger):
         if REBOOT:
-            reboot_manager(region, host, logger)
+            reboot_result = reboot_manager(region, host, logger)
         elif POWEROFF:
             poweroff_manager(region, host, logger)
         else:
@@ -1111,7 +1092,7 @@ def host_migration(region, host, logger):
                   .format(host))
         if are_instances_shutdown(region, host, logger):
             if REBOOT:
-                reboot_manager(region, host, logger)
+                reboot_manager(region, host, uptime, logger)
             elif POWEROFF:
                 poweroff_manager(region, host, logger)
             else:
@@ -1127,8 +1108,8 @@ def host_migration(region, host, logger):
     if COMPUTE_ENABLE or (
             COMPUTE_ENABLE is None and og_compute_node_status == "enabled"):
         # enable compute node
-        # IFF POWEROFF is False
-        if not POWEROFF:
+        # IFF POWEROFF is False and reboot was successful
+        if not POWEROFF and reboot_result:
             enable_compute_node(region, host, logger)
 
     elif COMPUTE_ENABLE is None:
@@ -1145,8 +1126,8 @@ def host_migration(region, host, logger):
     if ROGER_ENABLE or (
             ROGER_ENABLE is None and og_roger_alarm_status):
         # enable alarm
-        # IFF POWEROFF is False
-        if not POWEROFF:
+        # IFF POWEROFF is False and reboot was successful
+        if not POWEROFF and reboot_result:
             enable_alarm(host, logger)
     elif ROGER_ENABLE is None:
         log_event(logger, INFO,
@@ -1174,7 +1155,7 @@ def ssh_uptime(hosts, logger):
             # SSH and get uptime
             output, error = ssh_executor(host, "cat /proc/uptime", logger)
             log_event(logger, INFO,
-                      "[connecting to {} to get uptime]".format(host))
+                      "[{}][connecting to get uptime]".format(host))
             if error:
                 log_event(logger, ERROR,
                           "[{}] Error executing command {}"
@@ -1266,7 +1247,7 @@ def check_current_time(logger):
                                 " default execution will run. no time bound")
         return True
     current_hour = datetime.now().hour
-    return SCHEDULING_HOUR_START <= current_hour <= SCHEDULING_HOUR_STOP
+    return SCHEDULING_HOUR_START <= current_hour < SCHEDULING_HOUR_STOP
 
 
 def check_current_day(logger):

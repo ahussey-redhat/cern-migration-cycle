@@ -6,3 +6,5 @@ __pycache__/
 .coverage
 .stestr/
 cover/
+migration_cycle.egg-info/
+test.log
