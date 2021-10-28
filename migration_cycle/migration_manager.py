@@ -11,6 +11,7 @@ import configparser
 from datetime import datetime
 import json
 from migration_cycle.utils import *
+from migration_cycle.migration_stats import MigrationStats
 import logging
 from multiprocessing.pool import ThreadPool
 import os
@@ -522,7 +523,7 @@ def calculate_sleep_time(logger):
     return sleep_time
 
 
-def check_time_before_migrations(instance, logger):
+def check_time_before_migrations(instance, migration_stats, logger):
     """
     check if within working day and working hour
     """
@@ -535,15 +536,17 @@ def check_time_before_migrations(instance, logger):
                       .format(instance.name))
             log_event(logger, INFO, "[current time][{}]"
                       .format(datetime.now().strftime("%m/%d/%Y, %H:%M:%S")))
+            print_migration_stats(migration_stats, logger)
             # sleep for hours ( sec * 3600 = hour)
             time.sleep(calculate_sleep_time(logger) * 3600)
     return time_to_migrate
 
 
-def vms_migration(cloud, compute_node, logger):
+def vms_migration(cloud, compute_node, migration_stats, logger):
     # List of servers
     instances = get_instances(cloud, compute_node, logger)
     instances_name = [instance.name for instance in instances]
+    migration_stats.update_total_vms(instances_name)
     log_event(logger, INFO, "[{}][VMs] {}"
               .format(compute_node, instances_name))
 
@@ -554,7 +557,7 @@ def vms_migration(cloud, compute_node, logger):
         res = False
         for instance in instances:
             # check schedule day /time
-            check_time_before_migrations(instance, logger)
+            check_time_before_migrations(instance, migration_stats, logger)
             # progress meter
             progress += 1
             log_event(logger, INFO, "[working on {}. ({}/{}) VM]"
@@ -589,7 +592,15 @@ def vms_migration(cloud, compute_node, logger):
                                          u_instance,
                                          compute_node,
                                          logger)
-                    if res:
+                    # if live migration fails and stop at migration failure is True
+                    # skip whole compute node and return
+                    if not res and STOP_AT_MIGRATION_FAILURE:
+                        log_event(logger, ERROR, "[{}][skipping compute node]"
+                                     .format(compute_node))
+                        return
+                    else:
+                        # update migration stats migrated_vms
+                        migration_stats.update_migrated_vms([u_instance.name])
                         # ping instance after migration success
                         ping_result = ping_instance(u_instance.name, logger)
                         if not ping_result:
@@ -610,6 +621,8 @@ def vms_migration(cloud, compute_node, logger):
                                              u_instance,
                                              compute_node,
                                              logger)
+                        if res:
+                            migration_stats.update_migrated_vms([u_instance.name])
                 else:
                     msg = "[{}][failed to migrate]\
                         [not in ACTIVE or SHUTOFF status]".format(
@@ -630,12 +643,12 @@ def vms_migration(cloud, compute_node, logger):
                 log_event(logger, WARNING,
                           "[{}][can't be migrated. task state not NONE]"
                           .format(u_instance.name))
-        # if migration fails and stop at migration failure is True
-        # skip whole compute node and return
-        if not res and STOP_AT_MIGRATION_FAILURE:
-            log_event(logger, ERROR, "[{}][skipping compute node]"
+            # if migration fails and stop at migration failure is True
+            # skip whole compute node and return
+            if not res and STOP_AT_MIGRATION_FAILURE:
+                log_event(logger, ERROR, "[{}][skipping compute node]"
                                      .format(compute_node))
-            return
+                return
     else:
         log_event(logger, INFO,
                   "[{}][NO VMs in the compute node]".format(compute_node))
@@ -895,16 +908,20 @@ def get_empty_hosts(region, hosts, logger):
             if is_compute_node_empty(region, host, logger)]
 
 
-def process_empty_nodes_first(region, empty_hosts, logger):
+def process_empty_nodes_first(region, empty_hosts, migration_stats, logger):
     """reboot empty nodes first and return"""
     empty_hosts_count = len(empty_hosts)
     log_event(logger, INFO, "[total empty compute nodes {}]"
               .format(empty_hosts_count))
     pool = ThreadPool(processes=MAX_THREADS)
     for host in empty_hosts:
-        pool.apply_async(host_migration, (region, host, logger))
+        pool.apply_async(host_migration, (region, host, migration_stats, logger))
     pool.close()
     pool.join()
+
+
+def print_migration_stats(migration_stats, logger):
+    log_event(logger, INFO, "Migration Stats: [{}]".format(migration_stats.__str__()))
 
 
 def cell_migration(region, hosts, cell_name, logger):
@@ -912,14 +929,19 @@ def cell_migration(region, hosts, cell_name, logger):
     cell_host_count = len(hosts)
     pool = ThreadPool(processes=MAX_THREADS)
 
+    # migration stats
+    migration_stats = MigrationStats(cell_name)
+
     # work on empty hosts first
     empty_hosts = get_empty_hosts(region, hosts, logger)
-    process_empty_nodes_first(region, empty_hosts, logger)
+    migration_stats.update_empty_compute_nodes(empty_hosts)
+    process_empty_nodes_first(region, empty_hosts, migration_stats, logger)
 
     # create hypervisor dict with uptime
     hosts_dict = ssh_uptime(hosts, logger)
     # sort the hypervisors based on their uptime
     hosts = create_sorted_uptime_hosts(hosts_dict)
+    migration_stats.update_total_compute_nodes(hosts)
     log_event(logger, INFO, "[{}][cell nodes sorted by uptime{}]"
               .format(cell_name, hosts))
     log_event(logger, INFO, "[total compute nodes : {}]"
@@ -927,10 +949,11 @@ def cell_migration(region, hosts, cell_name, logger):
     while hosts:
         host = hosts.pop()
         count += 1
-        pool.apply_async(host_migration, (region, host, logger))
+        pool.apply_async(host_migration, (region, host, migration_stats, logger))
         # host_migration(region, nc, host, logger, args)
     pool.close()
     pool.join()
+    print_migration_stats(migration_stats, logger)
 
 
 def poweroff_manager(region, host, logger):
@@ -1005,7 +1028,7 @@ def check_big_vm(cloud, compute_node, logger):
     return False
 
 
-def host_migration(region, host, logger):
+def host_migration(region, host, migration_stats, logger):
 
     # kernel check and see if it needs update
     if KERNEL_CHECK:
@@ -1028,6 +1051,7 @@ def host_migration(region, host, logger):
                   .format(host))
         log_event(logger, INFO, "[{}][skipping the compute node]"
                   .format(host))
+        migration_stats.update_skipped_compute_nodes([host])
         return
 
     # check if HV has big VM and skip_large_vm_node is also True
@@ -1035,6 +1059,7 @@ def host_migration(region, host, logger):
     if SKIP_LARGE_VM_NODE and check_big_vm(region, host, logger):
         log_event(logger, INFO,
                   "[{}][skipping compute node][large VM found]".format(host))
+        migration_stats.update_skipped_compute_nodes([host])
         return
 
     # get state and status of hypervisor
@@ -1063,12 +1088,14 @@ def host_migration(region, host, logger):
                   "[{}][compute node is not UP or enabled]"
                   .format(host))
         log_event(logger, INFO, "[{}][skipping compute node]".format(host))
+        migration_stats.update_skipped_compute_nodes([host])
         return
 
     try:
         disable_compute_node(region, host, logger)
     except Exception:
         log_event(logger, INFO, "[{}][skipping compute node]".format(host))
+        migration_stats.update_skipped_compute_nodes([host])
         return
 
     # change GNI alarm status via Roger
@@ -1079,17 +1106,21 @@ def host_migration(region, host, logger):
             enable_compute_node(region, host, logger)
         except Exception:
             log_event(logger, INFO, "[{}][skipping compute node]".format(host))
+            migration_stats.update_skipped_compute_nodes([host])
             return
         log_event(logger, INFO, "[{}][skipping compute node]".format(host))
+        migration_stats.update_skipped_compute_nodes([host])
         return
 
-    vms_migration(region, host, logger)
+    vms_migration(region, host, migration_stats, logger)
 
     # reboot result
     reboot_result = True
     # check if migration was successful
     # if there are still vms left don't reboot
     if is_compute_node_empty(region, host, logger):
+        # update migration stats
+        migration_stats.update_migrated_compute_nodes([host])
         if REBOOT:
             reboot_result = reboot_manager(region, host, uptime, logger)
         elif POWEROFF:
@@ -1105,6 +1136,8 @@ def host_migration(region, host, logger):
         log_event(logger, INFO, "[{}][check if all vms are in shutdown state]"
                   .format(host))
         if are_instances_shutdown(region, host, logger):
+            # update migration stats
+            migration_stats.update_migrated_compute_nodes([host])
             if REBOOT:
                 reboot_manager(region, host, uptime, logger)
             elif POWEROFF:
@@ -1117,6 +1150,10 @@ def host_migration(region, host, logger):
                         .format(host))
     else:
         logger.info("[{}][still has VMs. can't reboot/poweroff]".format(host))
+
+    # if reboot_result is False
+    if not reboot_result:
+        migration_stats.update_failed_compute_reboots([host])
 
     # enable compute service
     if COMPUTE_ENABLE or (

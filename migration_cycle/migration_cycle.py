@@ -15,6 +15,7 @@ from multiprocessing.pool import ThreadPool
 from migration_cycle.migration_manager import setup_logger, host_migration
 from migration_cycle.migration_manager import set_global_vars_cli_execution
 from migration_cycle.utils import log_event
+from migration_cycle.migration_stats import MigrationStats
 
 # configure logging
 logging.basicConfig(level=logging.INFO,
@@ -177,6 +178,9 @@ def cli_execution(args):
 
     pool = ThreadPool(processes=g.MAX_THREADS)
 
+    # migration stats
+    migration_stats = MigrationStats("MigrationCycle_STATS")
+
     for host in args.hosts.split():
         region = args.cloud
 
@@ -190,7 +194,8 @@ def cli_execution(args):
         log_event(logger, g.INFO, "[{}][--> NEW EXECUTION <--]"
                   .format(host))
 
-        pool.apply_async(host_migration, (region, host, logger))
+        pool.apply_async(
+            host_migration, (region, host, migration_stats, logger))
 
     pool.close()
     pool.join()

@@ -11,6 +11,7 @@ import unittest
 import sys
 from unittest import mock
 from migration_cycle import migration_manager as mc
+from migration_cycle.migration_stats import MigrationStats
 from unittest.mock import patch
 from datetime import datetime
 
@@ -190,9 +191,11 @@ class TestMigrationManager(unittest.TestCase):
     def test_process_empty_nodes_first(self, mock_hm):
         mock_hm.return_value = None
         empty_hosts = ['host1.cern.ch', 'host2.cern.ch', 'host3.cern.ch']
+        ms_obj = MigrationStats('cell1')
         self.assertEqual(None,
                          mc.process_empty_nodes_first('region',
                                                       empty_hosts,
+                                                      ms_obj,
                                                       self.logger))
 
     @patch('migration_cycle.migration_manager.get_instances')
@@ -393,8 +396,11 @@ class TestMigrationManager(unittest.TestCase):
     @patch('time.sleep')
     def test_check_time_before_migrations(self, mock_sleep):
         mock_sleep.return_value = None
+        ms = MigrationStats('cell1')
         self.assertEqual(True,
-                         mc.check_time_before_migrations(self.server1, self.logger))
+                         mc.check_time_before_migrations(self.server1,
+                                                         ms,
+                                                         self.logger))
 
     def test_calculate_sleep_time(self):
         initial_date = datetime.strptime(
