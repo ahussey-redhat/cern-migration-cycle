@@ -334,6 +334,29 @@ class TestMigrationCycleUtils(unittest.TestCase):
         self.assertTrue('skip_shutdown_vms only support true/false.'
                         in str(cm.exception))
 
+    def test_get_stop_at_migration_failure(self):
+        # true
+        self.good_config['DEFAULT']['stop_at_migration_failure'] = 'true'
+        self.assertEqual(True,
+                         utils.
+                         get_stop_at_migration_failure(self.good_config
+                                                      ['test_cell'],
+                                                      self.logger))
+        # false
+        self.good_config['DEFAULT']['stop_at_migration_failure'] = 'false'
+        self.assertEqual(False,
+                         utils.
+                         get_stop_at_migration_failure(self.good_config
+                                                      ['test_cell'],
+                                                      self.logger))
+        # invalid
+        self.good_config['DEFAULT']['stop_at_migration_failure'] = 'yes'
+        with self.assertRaises(SystemExit) as cm:
+            utils.get_stop_at_migration_failure(self.good_config['DEFAULT'],
+                                               self.logger)
+        self.assertTrue('stop_at_migration_failure only supports true/false.'
+                        in str(cm.exception))
+
     def test_bytes2str(self):
         byte_message = bytes("migration cycle test", 'utf-8')
         self.assertEqual("migration cycle test", utils.bytes2str(byte_message))

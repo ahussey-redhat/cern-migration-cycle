@@ -145,6 +145,10 @@ def cli_execution(args):
                         ' Monday is 0 and Sunday is 6'
                         ' E.g. "--working-days 0,1,2,3,4"'
                         ' this will run migration cycle mon-fri')
+    parser.add_argument('--stop_at_migration_failure', dest='stop_at_migration_failure',
+                        default=True,
+                        type=lambda x: bool(strtobool(x)),
+                        help='stop at first migration failure and skips compute node')
 
     if not args:
         parser.print_help()

@@ -582,13 +582,19 @@ def vms_migration(cloud, compute_node, logger):
                                          u_instance,
                                          compute_node,
                                          logger)
-                    # ping instance after migration success
-                    if res:
+                    # if live migration fails and stop at migration failure is True
+                    # skip whole compute node and return
+                    if not res and STOP_AT_MIGRATION_FAILURE:
+                        logger.error(logger, ERROR, "[{}][skipping compute node]"
+                                     .format(compute_node))
+                    else:
+                        # ping instance after migration success
                         ping_result = ping_instance(u_instance.name, logger)
                         if not ping_result:
                             logger.warning("[{}][unable to ping after "
                                            "migration]"
                                            .format(u_instance.name))
+
                 elif u_instance.status == "SHUTOFF":
                     # do cold migration
                     if SKIP_SHUTDOWN_VMS:
@@ -1339,6 +1345,10 @@ def set_global_vars_cli_execution(args):
     if args.scheduling_days is not None:
         SCHEDULING_DAYS = [int(x) for x in args.scheduling_days.split(',')]
 
+    # STOP_AT_MIGRATION_FAILURE
+    global STOP_AT_MIGRATION_FAILURE
+    if args.stop_at_migration_failure is not None:
+        STOP_AT_MIGRATION_FAILURE = args.stop_at_migration_failure
 
 def config_file_execution(args):
     # parse the config file
@@ -1398,6 +1408,10 @@ def config_file_execution(args):
     # get ticket lifetime
     global TICKET_LIFETIME
     TICKET_LIFETIME = get_ticket_lifetime(config)
+
+    # stop_at_migration_failure
+    global STOP_AT_MIGRATION_FAILURE
+    STOP_AT_MIGRATION_FAILURE = get_stop_at_migration_failure(config)
 
     region = 'cern'
 
