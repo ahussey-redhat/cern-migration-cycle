@@ -5,7 +5,7 @@ Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch
 Group:          CERN/Utilities
-License:        MIT
+License:        ASL 2.0
 URL:            https://gitlab.cern.ch/cloud-infrastructure/migration_cycle
 
 
