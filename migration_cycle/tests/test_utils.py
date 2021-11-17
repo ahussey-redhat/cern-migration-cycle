@@ -347,20 +347,17 @@ class TestMigrationCycleUtils(unittest.TestCase):
         self.assertEqual(True,
                          utils.
                          get_stop_at_migration_failure(self.good_config
-                                                      ['test_cell'],
-                                                      self.logger))
+                                                      ['test_cell']))
         # false
         self.good_config['DEFAULT']['stop_at_migration_failure'] = 'false'
         self.assertEqual(False,
                          utils.
                          get_stop_at_migration_failure(self.good_config
-                                                      ['test_cell'],
-                                                      self.logger))
+                                                      ['test_cell']))
         # invalid
         self.good_config['DEFAULT']['stop_at_migration_failure'] = 'yes'
         with self.assertRaises(SystemExit) as cm:
-            utils.get_stop_at_migration_failure(self.good_config['DEFAULT'],
-                                               self.logger)
+            utils.get_stop_at_migration_failure(self.good_config['DEFAULT'])
         self.assertTrue('stop_at_migration_failure only supports true/false.'
                         in str(cm.exception))
 

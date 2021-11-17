@@ -591,8 +591,9 @@ def vms_migration(cloud, compute_node, logger):
                     # if live migration fails and stop at migration failure is True
                     # skip whole compute node and return
                     if not res and STOP_AT_MIGRATION_FAILURE:
-                        logger.error(logger, ERROR, "[{}][skipping compute node]"
+                        log_event(logger, ERROR, "[{}][skipping compute node]"
                                      .format(compute_node))
+                        return
                     else:
                         # ping instance after migration success
                         ping_result = ping_instance(u_instance.name, logger)
@@ -1355,6 +1356,7 @@ def set_global_vars_cli_execution(args):
     global STOP_AT_MIGRATION_FAILURE
     if args.stop_at_migration_failure is not None:
         STOP_AT_MIGRATION_FAILURE = args.stop_at_migration_failure
+
 
 def config_file_execution(args):
     # parse the config file

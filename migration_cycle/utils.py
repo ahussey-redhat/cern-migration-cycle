@@ -173,6 +173,23 @@ def get_excluded_nodes(config, logger):
     return excluded_nodes
 
 
+def get_stop_at_migration_failure(config):
+    try:
+        stop_at_migration_failure = config['stop_at_migration_failure'].lower() \
+            .strip()
+        if stop_at_migration_failure == 'true':
+            stop_at_migration_failure = True
+        elif stop_at_migration_failure == 'false':
+            stop_at_migration_failure = False
+        else:
+            msg = "stop_at_migration_failure only supports true/false."
+            " {} provided".format(stop_at_migration_failure)
+            sys.exit(msg)
+    except Exception:
+        stop_at_migration_failure = True
+    return stop_at_migration_failure
+
+
 def set_power_operation_config_option(config, logger):
     reboot = False
     poweroff = False
@@ -303,22 +320,3 @@ def set_skip_shutdown_vms_option(config, logger):
         log_event(logger, INFO, "using default. skip shutdown vms False")
     return skip_shutdown_vms
 
-
-def get_stop_at_migration_failure(config, logger):
-    try:
-        stop_at_migration_failure = config['stop_at_migration_failure'].lower() \
-            .strip()
-        if stop_at_migration_failure == 'true':
-            stop_at_migration_failure = True
-        elif stop_at_migration_failure == 'false':
-            stop_at_migration_failure = False
-        else:
-            msg = "stop_at_migration_failure only supports true/false."
-            " {} provided".format(stop_at_migration_failure)
-            log_event(logger, ERROR, msg)
-            sys.exit(msg)
-    except Exception:
-        stop_at_migration_failure = True
-        log_event(logger, INFO, "using default. stop at migration failure"
-                                " True")
-    return stop_at_migration_failure
