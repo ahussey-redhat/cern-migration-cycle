@@ -551,6 +551,7 @@ def vms_migration(cloud, compute_node, logger):
         # get total instances
         instances_count = len(instances)
         progress = 0
+        res = False
         for instance in instances:
             # check schedule day /time
             check_time_before_migrations(instance, logger)
@@ -588,13 +589,7 @@ def vms_migration(cloud, compute_node, logger):
                                          u_instance,
                                          compute_node,
                                          logger)
-                    # if live migration fails and stop at migration failure is True
-                    # skip whole compute node and return
-                    if not res and STOP_AT_MIGRATION_FAILURE:
-                        log_event(logger, ERROR, "[{}][skipping compute node]"
-                                     .format(compute_node))
-                        return
-                    else:
+                    if res:
                         # ping instance after migration success
                         ping_result = ping_instance(u_instance.name, logger)
                         if not ping_result:
@@ -635,6 +630,12 @@ def vms_migration(cloud, compute_node, logger):
                 log_event(logger, WARNING,
                           "[{}][can't be migrated. task state not NONE]"
                           .format(u_instance.name))
+        # if migration fails and stop at migration failure is True
+        # skip whole compute node and return
+        if not res and STOP_AT_MIGRATION_FAILURE:
+            log_event(logger, ERROR, "[{}][skipping compute node]"
+                                     .format(compute_node))
+            return
     else:
         log_event(logger, INFO,
                   "[{}][NO VMs in the compute node]".format(compute_node))
@@ -1090,7 +1091,7 @@ def host_migration(region, host, logger):
     # if there are still vms left don't reboot
     if is_compute_node_empty(region, host, logger):
         if REBOOT:
-            reboot_result = reboot_manager(region, host, logger)
+            reboot_result = reboot_manager(region, host, uptime, logger)
         elif POWEROFF:
             poweroff_manager(region, host, logger)
         else:
