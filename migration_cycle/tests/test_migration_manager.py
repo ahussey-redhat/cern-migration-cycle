@@ -47,6 +47,10 @@ class Server:
         self.name = name
         self._info = {}
         self.result = None
+        self.flavor = {'ephemeral': 0, 'ram': 1875, 'original_name': 'm2.small',
+                       'vcpus': 1,
+                       'extra_specs': {'hw_rng:allowed': 'True'},
+                       'swap': 0, 'disk': 10}
 
     def live_migrate(self, host=None, block_migration=True):
         if not self.result:
@@ -72,6 +76,10 @@ class VolServer:
         self.name = name
         self._info = {}
         self.result = None
+        self.flavor = {'ephemeral': 0, 'ram': 7500, 'original_name': 'm2.large',
+                       'vcpus': 4,
+                       'extra_specs': {'hw_rng:allowed': 'True'},
+                       'swap': 0, 'disk': 40}
 
     def live_migrate(self, host=None, block_migration=True):
         if not self.result:
@@ -136,8 +144,8 @@ class TestMigrationManager(unittest.TestCase):
                                                 self.logger))
 
     def test_setup_logger(self):
-        self.logger.name="test-logger"
-        output=mc.setup_logger('test-logger', 'test.log')
+        self.logger.name = "test-logger"
+        output = mc.setup_logger('test-logger', 'test.log')
         self.assertEqual(self.logger.name, output.name)
 
     def test_execute_cmd(self):
@@ -161,7 +169,7 @@ class TestMigrationManager(unittest.TestCase):
                                                  self.logger))
 
     def test_create_sorted_uptime_hosts(self):
-        uptime_dict={'host1.cern.ch': 500, 'host2.cern.ch': 1700,
+        uptime_dict = {'host1.cern.ch': 500, 'host2.cern.ch': 1700,
                        'host3.cern.ch': 200}
         self.assertEqual(['host3.cern.ch', 'host1.cern.ch', 'host2.cern.ch'],
                          mc.create_sorted_uptime_hosts(uptime_dict))
