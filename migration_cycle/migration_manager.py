@@ -278,7 +278,7 @@ def live_migration(cloud, instance, compute_node, logger):
 
     log_event(logger, INFO,
               "[{}][instance-uuid: {}]".format(instance.name, instance.id))
-    log_event(logger, INFO, "[{}][flavor]".format(
+    log_event(logger, INFO, "[{}][{}][flavor]".format(
         instance.name, instance.flavor['original_name']))
     # check if volume is attached to an instance
     if instance._info["image"]:
@@ -388,7 +388,7 @@ def cold_migration(cloud, instance, compute_node, logger):
     start = time.time()
 
     log_event(logger, INFO, "[{}][id {}]".format(instance.name, instance.id))
-    log_event(logger, INFO, "[{}][flavor]".format(
+    log_event(logger, INFO, "[{}][{}][flavor]".format(
         instance.name, instance.flavor['original_name']))
     log_event(logger, INFO,
               "[{}][cold migration][started]".format(instance.name))
