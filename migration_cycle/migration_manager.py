@@ -600,7 +600,7 @@ def vms_migration(cloud, compute_node, migration_stats, logger):
                     # skip whole compute node and return
                     if not res and STOP_AT_MIGRATION_FAILURE:
                         log_event(logger, ERROR, "[{}][skipping compute node]"
-                                     .format(compute_node))
+                                  .format(compute_node))
                         return
                     else:
                         # update migration stats migrated_vms
@@ -626,7 +626,8 @@ def vms_migration(cloud, compute_node, migration_stats, logger):
                                              compute_node,
                                              logger)
                         if res:
-                            migration_stats.update_migrated_vms([u_instance.name])
+                            migration_stats.update_migrated_vms(
+                                [u_instance.name])
                 else:
                     msg = "[{}][failed to migrate]\
                         [not in ACTIVE or SHUTOFF status]".format(
@@ -651,7 +652,7 @@ def vms_migration(cloud, compute_node, migration_stats, logger):
             # skip whole compute node and return
             if not res and STOP_AT_MIGRATION_FAILURE:
                 log_event(logger, ERROR, "[{}][skipping compute node]"
-                                     .format(compute_node))
+                          .format(compute_node))
                 return
     else:
         log_event(logger, INFO,
@@ -805,7 +806,8 @@ def enable_alarm(host, logger):
 
 def disable_alarm(host, logger):
     make_kerb5_ticket(logger)
-    cmd = ["/usr/bin/roger", "update", host, "--all_alarms", "false"]
+    cmd = ["/usr/bin/roger", "update", host, "--all_alarms",
+           "false", "--message", "server disabled by migration_cycle"]
     if execute_cmd(cmd, logger):
         log_event(logger, INFO, "[{}][roger alarm disabled]".format(host))
         return True
@@ -919,13 +921,15 @@ def process_empty_nodes_first(region, empty_hosts, migration_stats, logger):
               .format(empty_hosts_count))
     pool = ThreadPool(processes=MAX_THREADS)
     for host in empty_hosts:
-        pool.apply_async(host_migration, (region, host, migration_stats, logger))
+        pool.apply_async(
+            host_migration, (region, host, migration_stats, logger))
     pool.close()
     pool.join()
 
 
 def print_migration_stats(migration_stats, logger):
-    log_event(logger, INFO, "Migration Stats: [{}]".format(migration_stats.__str__()))
+    log_event(logger, INFO, "Migration Stats: [{}]".format(
+        migration_stats.__str__()))
 
 
 def cell_migration(region, hosts, cell_name, logger):
@@ -953,7 +957,8 @@ def cell_migration(region, hosts, cell_name, logger):
     while hosts:
         host = hosts.pop()
         count += 1
-        pool.apply_async(host_migration, (region, host, migration_stats, logger))
+        pool.apply_async(
+            host_migration, (region, host, migration_stats, logger))
         # host_migration(region, nc, host, logger, args)
     pool.close()
     pool.join()
