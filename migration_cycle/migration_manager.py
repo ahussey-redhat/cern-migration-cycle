@@ -254,7 +254,8 @@ def get_migration_disk_size(cloud, instance_uuid, logger):
         if disk_size is None:
             disk_size = 0
     except Exception as e:
-        log_event(logger, ERROR, "[failed to get disk size of instance {}][{}]"
+        log_event(logger, WARNING,
+                  "[failed to get disk size of instance {}][{}]"
                   .format(instance_uuid, e))
     log_event(logger, INFO, "[{}][disk_total_bytes : {}]"
               .format(instance.name, disk_size))
@@ -599,7 +600,8 @@ def vms_migration(cloud, compute_node, migration_stats, logger):
                     # if live migration fails and stop at migration failure is True
                     # skip whole compute node and return
                     if not res and STOP_AT_MIGRATION_FAILURE:
-                        log_event(logger, ERROR, "[{}][skipping compute node]"
+                        log_event(logger, ERROR,
+                                  "[{}][skipping compute node][migration failed]"
                                   .format(compute_node))
                         return
                     else:
