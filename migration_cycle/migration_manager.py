@@ -551,7 +551,6 @@ def vms_migration(cloud, compute_node, migration_stats, logger):
     # List of servers
     instances = get_instances(cloud, compute_node, logger)
     instances_name = [instance.name for instance in instances]
-    migration_stats.update_total_vms(instances_name)
     log_event(logger, INFO, "[{}][VMs] {}"
               .format(compute_node, instances_name))
 
@@ -603,6 +602,7 @@ def vms_migration(cloud, compute_node, migration_stats, logger):
                         log_event(logger, ERROR,
                                   "[{}][skipping compute node][migration failed]"
                                   .format(compute_node))
+                        migration_stats.update_failed_vms([u_instance.name])
                         return
                     else:
                         # update migration stats migrated_vms
@@ -646,6 +646,7 @@ def vms_migration(cloud, compute_node, migration_stats, logger):
                         log_event(logger, INFO,
                                   "[{}][migration failed]"
                                   .format(u_instance.name))
+                        migration_stats.update_failed_vms([u_instance.name])
             else:
                 log_event(logger, WARNING,
                           "[{}][can't be migrated. task state not NONE]"
@@ -1131,7 +1132,7 @@ def host_migration(region, host, migration_stats, logger):
     # if there are still vms left don't reboot
     if is_compute_node_empty(region, host, logger):
         # update migration stats
-        migration_stats.update_migrated_compute_nodes([host])
+        migration_stats.update_rebooted_compute_nodes([host])
         if REBOOT:
             reboot_result = reboot_manager(region, host, uptime, logger)
         elif POWEROFF:
@@ -1148,7 +1149,7 @@ def host_migration(region, host, migration_stats, logger):
                   .format(host))
         if are_instances_shutdown(region, host, logger):
             # update migration stats
-            migration_stats.update_migrated_compute_nodes([host])
+            migration_stats.update_rebooted_compute_nodes([host])
             if REBOOT:
                 reboot_manager(region, host, uptime, logger)
             elif POWEROFF:

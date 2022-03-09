@@ -27,17 +27,17 @@ class TestMigrationCycleStats(unittest.TestCase):
         self.assertEqual(
             migration_stats.skipped_compute_nodes, set(self.hosts))
 
-    def test_update_migrated_compute_nodes(self):
+    def test_update_rebooted_compute_nodes(self):
         migration_stats = MigrationStats('cell1')
-        migration_stats.update_migrated_compute_nodes(self.hosts)
+        migration_stats.update_rebooted_compute_nodes(self.hosts)
         self.assertEqual(
-            migration_stats.migrated_compute_nodes, set(self.hosts))
+            migration_stats.rebooted_compute_nodes, set(self.hosts))
 
-    def test_update_total_vms(self):
+    def test_update_failed_vms(self):
         migration_stats = MigrationStats('cell1')
-        migration_stats.update_total_vms(self.vms)
+        migration_stats.update_failed_vms(self.vms)
         self.assertEqual(
-            migration_stats.total_vms, set(self.vms))
+            migration_stats.failed_vms, set(self.vms))
 
     def test_update_migrated_vms(self):
         migration_stats = MigrationStats('cell1')
