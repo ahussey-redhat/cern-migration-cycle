@@ -157,6 +157,9 @@ def cli_execution(args):
                         type=lambda x: bool(strtobool(x)),
                         help='stop at first migration failure and skips compute node')
 
+    parser.add_argument('--exclusive-vms-list', dest='exclusive_vms_list',
+                        nargs='+', help='exclusive list of VMs that will be migrated if matched')
+
     if not args:
         parser.print_help()
         sys.exit()

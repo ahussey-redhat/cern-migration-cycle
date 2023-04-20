@@ -547,12 +547,20 @@ def check_time_before_migrations(instance, migration_stats, logger):
     return time_to_migrate
 
 
-def vms_migration(cloud, compute_node, migration_stats, logger):
+def vms_migration(cloud, compute_node, migration_stats, logger, exclusive_vms_list=None):
     # List of servers
     instances = get_instances(cloud, compute_node, logger)
-    instances_name = [instance.name for instance in instances]
+
     log_event(logger, INFO, "[{}][VMs] {}"
-              .format(compute_node, instances_name))
+              .format(compute_node, [instance.name for instance in instances]))
+
+    # Filter names if filtering passed
+    if exclusive_vms_list:
+        log_event(logger, INFO, f"[{compute_node}][filtering VMs with exclusive list] {exclusive_vms_list}")
+        instances = [instance for instance in instances if instance.name in exclusive_vms_list]
+
+    log_event(logger, INFO, "[{}][VMs to migrate] {}"
+              .format(compute_node, [instance.name for instance in instances]))
 
     if instances:
         # get total instances
@@ -1040,7 +1048,7 @@ def check_big_vm(cloud, compute_node, logger):
     return False
 
 
-def host_migration(region, host, migration_stats, logger):
+def host_migration(region, host, migration_stats, logger, exclusive_vms_list=None):
 
     # kernel check and see if it needs update
     if KERNEL_CHECK:
@@ -1124,7 +1132,7 @@ def host_migration(region, host, migration_stats, logger):
         migration_stats.update_skipped_compute_nodes([host])
         return
 
-    vms_migration(region, host, migration_stats, logger)
+    vms_migration(region, host, migration_stats, logger, exclusive_vms_list)
 
     # reboot result
     reboot_result = True
