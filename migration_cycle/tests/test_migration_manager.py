@@ -51,6 +51,7 @@ class Server:
                        'vcpus': 1,
                        'extra_specs': {'hw_rng:allowed': 'True'},
                        'swap': 0, 'disk': 10}
+        self.status = 'ACTIVE'
 
     def live_migrate(self, host=None, block_migration=True):
         if not self.result:
@@ -131,9 +132,17 @@ class TestMigrationManager(unittest.TestCase):
         self.ironic = IronicServer('Iserver', '123')
         self.nclient = NClient('region')
 
-    def test_ping_instance(self):
-        output = mc.ping_instance(self.server1.name, self.logger)
-        self.assertEqual(output, False)
+    def test_is_available_ok(self):
+        with patch('migration_cycle.migration_manager.ping_instance') as mock_ping:
+          mock_ping.return_value = {'loss': 0, 'received': 30, 'rtt_min': 0.1, 'rtt_max': 0.1, 'rtt_avg': 0.1, 'rtt_mdev': 0.1}
+          output = mc.is_available("available-instance-name", self.logger)
+          self.assertEqual(output, True)
+
+    def test_is_available_notok(self):
+        with patch('migration_cycle.migration_manager.ping_instance') as mock_ping:
+          mock_ping.return_value = {'loss': 100, 'received': 30, 'rtt_min': 0.1, 'rtt_max': 0.1, 'rtt_avg': 0.1, 'rtt_mdev': 0.1}
+          output = mc.is_available("unavailable-instance-name", self.logger)
+          self.assertEqual(output, False)
 
     def test_check_uptime_threshold(self):
         uptime = {'host1.cern.ch': 500}
@@ -301,32 +310,89 @@ class TestMigrationManager(unittest.TestCase):
         mock_inc.return_value = self.nclient
         with self.assertRaises(Exception) as context:
             mc.get_instance_from_hostname('region',
-                                          self.hypervisor,
+                                          self.server1.name,
                                           self.logger)
         self.assertTrue('has no attribute' in str(context.exception))
 
-    @patch('migration_cycle.migration_manager.init_nova_client')
-    @patch('migration_cycle.migration_manager.get_instance_from_hostname')
-    @patch('migration_cycle.migration_manager.get_migration_id')
-    def test_abort_live_migration(self, mock_inc, mock_gih, mock_id):
-        mock_inc.return_value = self.nclient
-        mock_gih.return_value = self.server1
-        mock_id.return_value = '1234'
-        self.assertEqual(None,
-                         mc.abort_live_migration('region',
-                                                 self.hypervisor,
-                                                 self.logger))
+    def test_abort_live_migration_with_active_migration(self):
+        with patch('migration_cycle.migration_manager.init_nova_client') as inc_mock:
+            with patch('migration_cycle.migration_manager.get_instance_from_hostname', return_value = self.server1):
+                with patch('migration_cycle.migration_manager.get_migration_id', return_value = '1234'):
+                    nc_mock = mock.Mock()
+                    inc_mock.return_value = nc_mock
 
-    @patch('migration_cycle.migration_manager.ping_instance')
-    @patch('migration_cycle.migration_manager.abort_live_migration')
-    def test_probe_instance_availability(self, mock_ping, mock_abort):
-        mock_ping.return_value = False
-        mock_abort.return_value = None
-        self.assertEqual(None,
+                    self.assertEqual(None,
+                         mc.abort_live_migration('region',
+                                                 self.server1.name,
+                                                 self.logger))
+                    nc_mock.server_migrations.live_migration_abort.assert_called_with(self.server1, "1234")
+
+    def test_abort_live_migration_with_abort_failure(self):
+        with patch.object(self.server1, 'status', 'MIGRATING'):
+            with patch('migration_cycle.migration_manager.init_nova_client') as inc_mock:
+                with patch('migration_cycle.migration_manager.get_instance_from_hostname', return_value = self.server1):
+                    with patch('migration_cycle.migration_manager.get_migration_id', return_value = '1234'):
+                        with self.assertRaisesRegex(RuntimeError, "failed to abort"):
+                            nc_mock = mock.Mock()
+                            inc_mock.return_value = nc_mock
+                            self.assertEqual(None,
+                                mc.abort_live_migration('region',
+                                                    self.server1.name,
+                                                    self.logger))
+                            nc_mock.server_migrations.live_migration_abort.assert_called_with(self.server1, "1234")
+
+
+    def test_abort_live_migration_without_active_migration(self):
+        with patch('migration_cycle.migration_manager.init_nova_client') as inc_mock:
+            with patch('migration_cycle.migration_manager.get_instance_from_hostname', return_value = self.server1):
+                with patch('migration_cycle.migration_manager.get_migration_id', return_value = None):
+                    nc_mock = mock.Mock()
+                    inc_mock.return_value = nc_mock
+
+                    self.assertEqual(None,
+                         mc.abort_live_migration('region',
+                                                 self.server1.name,
+                                                 self.logger))
+                    assert not nc_mock.server_migrations.live_migration_abort.called
+
+    def test_probe_instance_availability_with_all_ok(self):
+        ms_obj = MigrationStats('cell1')
+        with patch('migration_cycle.migration_manager.ping_instance') as mock_ping:
+            mock_ping.return_value = {'loss': 0, 'received': 30, 'rtt_min': 0.1, 'rtt_max': 0.1, 'rtt_avg': 0.1, 'rtt_mdev': 0.1}
+            with patch('migration_cycle.migration_manager.abort_live_migration') as mock_abort:
+                self.assertEqual(None,
                          mc.probe_instance_availability('region',
-                                                        self.hypervisor,
+                                                        self.hypervisor.name,
                                                         5,
-                                                        self.logger))
+                                                        self.logger,
+                                                        ms_obj))
+                assert not mock_abort.called
+
+    def test_probe_instance_availability_with_ping_loss(self):
+        ms_obj = MigrationStats('cell1')
+        with patch('migration_cycle.migration_manager.ping_instance') as mock_ping:
+            mock_ping.return_value = {'loss': 50, 'received': 30, 'rtt_min': 0.1, 'rtt_max': 0.1, 'rtt_avg': 0.1, 'rtt_mdev': 0.1}
+            with patch('migration_cycle.migration_manager.abort_live_migration') as mock_abort:
+                self.assertEqual(None,
+                         mc.probe_instance_availability('region',
+                                                        self.server1.name,
+                                                        5,
+                                                        self.logger,
+                                                        ms_obj))
+                mock_abort.assert_called_with('region', self.server1.name, self.logger)
+
+    def test_probe_instance_availability_with_ping_latency(self):
+        ms_obj = MigrationStats('cell1')
+        with patch('migration_cycle.migration_manager.ping_instance') as mock_ping:
+            mock_ping.return_value = {'loss': 0, 'received': 30, 'rtt_min': 0.1, 'rtt_max': 1000, 'rtt_avg': 500, 'rtt_mdev': 500}
+            with patch('migration_cycle.migration_manager.abort_live_migration') as mock_abort:
+                self.assertEqual(None,
+                         mc.probe_instance_availability('region',
+                                                        self.server1.name,
+                                                        5,
+                                                        self.logger,
+                                                        ms_obj))
+                mock_abort.assert_called_with('region', self.server1.name, self.logger)
 
     @patch('migration_cycle.migration_manager.init_nova_client')
     def test_get_migration_id(self, mock_inc):
@@ -337,14 +403,14 @@ class TestMigrationManager(unittest.TestCase):
                                              self.logger))
 
     @patch('migration_cycle.migration_manager.init_nova_client')
-    def test_get_migration_status(self, mock_inc):
+    def test_get_migration(self, mock_inc):
         mock_inc.return_value = self.nclient
         self.assertEqual(None,
-                         mc.get_migration_status('region',
+                         mc.get_migration('region',
                                                  self.hypervisor,
                                                  self.logger))
 
-    @patch('migration_cycle.migration_manager.ping_instance')
+    @patch('migration_cycle.migration_manager.is_available')
     def test_live_migration(self, mock_ping):
         mock_ping.return_value = False
         lm_server = Server('lm_server', '123')
@@ -354,7 +420,8 @@ class TestMigrationManager(unittest.TestCase):
                          mc.live_migration('region',
                                            lm_server,
                                            self.hypervisor,
-                                           self.logger))
+                                           self.logger,
+                                           MigrationStats('cell1')))
 
         cm_server = VolServer('cm_server', '123')
         cm_server.set_image()
@@ -363,9 +430,10 @@ class TestMigrationManager(unittest.TestCase):
                          mc.live_migration('region',
                                            cm_server,
                                            self.hypervisor,
-                                           self.logger))
+                                           self.logger,
+                                           MigrationStats('cell1')))
 
-    @patch('migration_cycle.migration_manager.ping_instance')
+    @patch('migration_cycle.migration_manager.is_available')
     def test_cold_migration(self, mock_ping):
         mock_ping.return_value = False
         lm_server = Server('lm_server', '123')

@@ -24,7 +24,7 @@ include: 'https://gitlab.cern.ch/linuxsupport/rpmci/raw/master/rpm-ci.yml'
 #     - cd $CI_PROJECT_DIR
 #     - tox -epep8
 
-python36:
+pytest:
   stage: prebuild
   image: gitlab-registry.cern.ch/cloud-infrastructure/cci-scripts/tox8
   except:
@@ -33,20 +33,29 @@ python36:
     - python3 -V
     - dnf install openldap-devel krb5-devel -y
     - cd $CI_PROJECT_DIR
-    - tox -epy36
+    - tox -epytest
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+
 
 cover:
   stage: prebuild
   image: gitlab-registry.cern.ch/cloud-infrastructure/cci-scripts/tox8
   except:
     - tags
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   script:
     - dnf install openldap-devel krb5-devel -y
     - cd $CI_PROJECT_DIR
     - tox -ecover
   artifacts:
-    paths:
-      - cover
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: cover/coverage.xml
+
 
 
 .rpm_deps:
