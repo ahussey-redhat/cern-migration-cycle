@@ -16,6 +16,7 @@ class MigrationStats:
         self.failed_compute_reboots = set()
         self.failed_vms = set()
         self.migrated_vms = set()
+        self.vm_ping_reports = {}
 
     def update_total_compute_nodes(self, compute_node):
         """Update total compute nodes"""
@@ -44,6 +45,13 @@ class MigrationStats:
     def update_migrated_vms(self, vm):
         """Update VMs migrated"""
         self.migrated_vms.update(vm)
+
+    def update_ping_report(self, vm, ping_report):
+        ping_report['timestamp'] = int(time.time() * 1000)
+        if vm in self.vm_ping_reports:
+            self.vm_ping_reports[vm].append(ping_report)
+        else:
+            self.vm_ping_reports[vm] = [ping_report]
 
     # def update_stats(self, stat_to_update, value):
     #     """Update migration_cycle stats"""
