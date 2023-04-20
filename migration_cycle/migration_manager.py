@@ -383,6 +383,7 @@ def live_migration(cloud, instance, compute_node, logger):
             return False
 
     disk_size = None
+    dest_compute = None
 
     increment = 0
     while MAX_MIGRATION_TIMEOUT > increment:
@@ -405,6 +406,10 @@ def live_migration(cloud, instance, compute_node, logger):
         # get instance host
         ins_dict = instance.to_dict()
 
+        # Report once hypervisor target for debug purposes
+        if mig and mig.dest_compute and not dest_compute:
+            dest_compute = mig.dest_compute
+            log_event(logger, INFO, f"[{instance.name}][live migration][destination: {dest_compute}]")
 
         # if status == running get the disk info
         # VM should be booted from image to get disk size.
