@@ -20,6 +20,7 @@ import select
 import subprocess
 import sys
 import time
+import datetime
 import threading
 import re
 
@@ -333,7 +334,7 @@ def get_migration_disk_size(cloud, instance_uuid, logger):
 
     return disk_size
 
-def report_migration_progress(cloud, instance, migration_id, logger):
+def report_migration_progress(cloud, instance, migration_id, migration_stats, logger):
     """
     Returns migration object of on-going migration instance
     If no migration is found in an active state, None is returned.
@@ -341,18 +342,23 @@ def report_migration_progress(cloud, instance, migration_id, logger):
     nc = init_nova_client(cloud, logger)
     mem_report = "Unknown"
     disk_report = "Unknown"
+    time_remaining = "Unknown"
 
     try:
         mig = nc.server_migrations.get(instance.id, migration_id)
         if hasattr(mig, 'disk_total_bytes') and hasattr(mig, 'disk_processed_bytes') and mig.disk_total_bytes > 0:
             disk_processed = (mig.disk_processed_bytes / mig.disk_total_bytes) * 100
             disk_report = f"{disk_processed:.2f}%"
+            speed = migration_stats.update_migration_speed(instance.name, mig.disk_processed_bytes)
+            if speed:
+                remaining = mig.disk_total_bytes - mig.disk_processed_bytes
+                time_remaining = datetime.timedelta(seconds=(remaining / speed))
 
         if hasattr(mig, 'memory_total_bytes') and hasattr(mig, 'memory_processed_bytes') and mig.memory_total_bytes > 0:
             memory_processed = (mig.memory_processed_bytes / mig.memory_total_bytes) * 100
             mem_report = f"{memory_processed:.2f}%"
 
-        log_event(logger, INFO, f"[{instance.name}][live migration][disk processed: {disk_report} - memory processed: {mem_report}]")
+        log_event(logger, INFO, f"[{instance.name}][live migration][disk processed: {disk_report} - memory processed: {mem_report} - estimated remaining time: {time_remaining}]")
 
 
     except Exception as ex:
@@ -434,7 +440,7 @@ def live_migration(cloud, instance, compute_node, logger, migration_stats):
         ins_dict = instance.to_dict()
 
         if mig and mig.status == 'running':
-            report_migration_progress(cloud, instance, mig.id, logger)
+            report_migration_progress(cloud, instance, mig.id, migration_stats, logger)
 
         # Report once hypervisor target for debug purposes
         if mig and mig.dest_compute and not dest_compute:

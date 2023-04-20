@@ -4,6 +4,8 @@
 # In applying this license, CERN does not waive the privileges and immunities
 # granted to it by virtue of its status as Intergovernmental Organization
 # or submit itself to any jurisdiction.
+import time
+
 class MigrationStats:
     """Class to manage migration_cycle stats"""
 
@@ -17,6 +19,7 @@ class MigrationStats:
         self.failed_vms = set()
         self.migrated_vms = set()
         self.vm_ping_reports = {}
+        self.vm_progress = {}
 
     def update_total_compute_nodes(self, compute_node):
         """Update total compute nodes"""
@@ -56,6 +59,25 @@ class MigrationStats:
     # def update_stats(self, stat_to_update, value):
     #     """Update migration_cycle stats"""
     #     self.__dict__[stat_to_update] += value
+
+    def update_migration_speed(self, vm, disk_processed):
+        now = time.time()
+        # Last timestamp
+        # Last disk processed
+        # Moving average
+        if vm in self.vm_progress:
+            prev_time, prev_processed, prev_speed = self.vm_progress[vm]
+            new_speed = (disk_processed-prev_processed) / (now - prev_time)
+            if prev_speed:
+                avg_speed = (prev_speed+new_speed)/2
+                self.vm_progress[vm] = (now, disk_processed, avg_speed)
+                return avg_speed
+            else:
+               self.vm_progress[vm] = (now, disk_processed, new_speed)
+               return new_speed
+        else:
+            self.vm_progress[vm] = (now, disk_processed, None)
+            return None
 
     def __str__(self):
         return (
