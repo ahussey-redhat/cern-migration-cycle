@@ -16,7 +16,7 @@ from migration_cycle.migration_manager import setup_logger, host_migration
 from migration_cycle.migration_manager import set_global_vars_cli_execution
 from migration_cycle.utils import log_event
 from migration_cycle.migration_stats import MigrationStats
-
+from migration_cycle.monit_utils import MonitMetrics
 # configure logging
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -200,6 +200,8 @@ def cli_execution(args):
     pool.close()
     pool.join()
 
+    monit = MonitMetrics()
+    monit.send_migration_stats(migration_stats, cli_logger("stats"))
 
 def main():
     args = sys.argv[1:]
