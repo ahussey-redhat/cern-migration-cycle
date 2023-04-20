@@ -180,7 +180,7 @@ def cli_execution(args):
 
     # migration stats
     migration_stats = MigrationStats("MigrationCycle_STATS")
-
+    pool_map = {}
     for host in args.hosts.split():
         region = args.cloud
 
@@ -194,14 +194,24 @@ def cli_execution(args):
         log_event(logger, g.INFO, "[{}][--> NEW EXECUTION <--]"
                   .format(host))
 
-        pool.apply_async(
-            host_migration, (region, host, migration_stats, logger))
+        x = pool.apply_async(
+            host_migration, (region, host, migration_stats, logger, args.exclusive_vms_list, args.skip_vms_list))
+        pool_map[host] = {'logger': logger, 'result': x}
 
     pool.close()
     pool.join()
 
     monit = MonitMetrics()
     monit.send_migration_stats(migration_stats, cli_logger("stats"))
+
+    for host, value in pool_map.items():
+        result = value['result']
+        logger = value['logger']
+        try:
+            value = result.get()
+            log_event(logger, g.INFO, f"[{host}][Execution Output]: {value}")
+        except Exception as ex:
+            log_event(logger, g.ERROR, f"[{host}][Execution Output]: {ex}")
 
 def main():
     args = sys.argv[1:]
