@@ -21,6 +21,8 @@ import subprocess
 import sys
 import time
 import threading
+import re
+
 from novaclient import client as nova_client
 
 from keystoneauth1 import session as keystone_session
@@ -132,22 +134,6 @@ def ssh_executor(host, command, logger, connect_timeout=10,
     return total_output, total_error
 
 
-def ping_instance(hostname, logger):
-    """ping instance hostname"""
-
-    cmd = ['ping', '-c', '1', hostname]
-    with open(os.devnull, 'w') as DEVNULL:
-        try:
-            subprocess.check_call(cmd,
-                                  stdout=DEVNULL,
-                                  stderr=DEVNULL)
-            logger.debug("[{} is alive]".format(hostname))
-        except Exception:
-            logger.info("[{} is unreachable]".format(hostname))
-            return False
-    return True
-
-
 def get_instance_from_hostname(cloud, hostname, logger):
     """return instance from a provided hostname"""
     nc = init_nova_client(cloud, logger)
@@ -175,20 +161,80 @@ def abort_live_migration(cloud, hostname, logger):
                   .format(hostname, e))
 
 
-def probe_instance_availability(cloud, hostname, interval, logger):
+def report_ping(output):
+    """
+    Scenario 1:
+    30 packets transmitted, 30 received, 0% packet loss, time 29085ms
+    rtt min/avg/max/mdev = 0.487/265.977/1268.174/332.624 ms, pipe 2
+
+    Scenario 2 (no rtt metrics):
+    1 packets transmitted, 0 received, +1 errors, 100% packet loss, time 0ms
+    """
+    status = {}
+
+    loss_match = re.search('([.0-9]+)% packet loss', output)
+    status['loss'] = float(loss_match.group(1)) if loss_match else None
+
+    received_match = re.search('([0-9]+) received', output)
+    status['received'] = int(received_match.group(1)) if received_match else None
+
+    rtt_match = re.search('rtt(.*) = ([.0-9]+)/([.0-9]+)/([.0-9]+)/([.0-9]+) ms', output)
+    status['rtt_min'] = float(rtt_match.group(2)) if rtt_match else None
+    status['rtt_avg'] = float(rtt_match.group(3)) if rtt_match else None
+    status['rtt_max'] = float(rtt_match.group(4)) if rtt_match else None
+    status['rtt_mdev'] = float(rtt_match.group(5)) if rtt_match else None
+
+    return status
+
+
+def ping_instance(hostname, period, logger):
+    """ping instance hostname"""
+
+    interval = PING_FREQUENCY
+    total = period / interval
+
+    try:
+        output = subprocess.check_output(['ping', '-4', '-c', f'{total}', '-w', f'{period}', '-i', f'{interval}', hostname])
+        ping_summary = report_ping(output.decode('utf-8'))
+        log_event(logger, INFO, f"[{hostname} alive - ping summary: {ping_summary}]")
+        return ping_summary
+
+    except subprocess.CalledProcessError as ex:
+        if ex.returncode > 1:
+            log_event(logger, ERROR, f"[unexpected error pinging {hostname}, aborting]")
+            return None
+
+        # 1: Not expected pings
+        ping_summary =  report_ping(ex.output.decode('utf-8'))
+        log_event(logger, ERROR, f"[{hostname} was unreachable for {ping_summary['loss']}% of pings - ping summary: {ping_summary}]")
+        return ping_summary
+
+
+def is_available(hostname, logger):
+    r = ping_instance(hostname, 10, logger)
+    return r and r['loss'] < 100
+
+
+def probe_instance_availability(cloud, hostname, period, logger):
     """probes the instance availability (ping) during
        an interval of time (seconds)."""
 
-    start_time = time.time()
-    unavailable_counter = 0
-    while time.time() < start_time + interval:
-        if not ping_instance(hostname, logger):
-            unavailable_counter += 1
-        else:
-            unavailable_counter = 0
-        if unavailable_counter > PING_UNAVAILABLE:
-            abort_live_migration(cloud, hostname, logger)
-        time.sleep(PING_FREQUENCY)
+    ping_summary = ping_instance(hostname, period, logger)
+
+    if not ping_summary:
+        log_event(logger, ERROR, f"[unexpected error pinging {hostname}, aborting]")
+        abort_live_migration(cloud, hostname, logger)
+        return
+
+    if ping_summary['loss'] >= PING_UNAVAILABLE_PERCENT and ABORT_ON_PING_LOSS:
+        log_event(logger, ERROR, f"[{hostname} loss is greater than current threshold {PING_UNAVAILABLE_PERCENT}%, aborting]")
+        abort_live_migration(cloud, hostname, logger)
+        return
+
+    if ping_summary['rtt_avg'] >= HOST_LATENCY_THRESHOLD_MS and ABORT_ON_PING_LATENCY:
+        log_event(logger, ERROR, f"[{hostname} latency is greater than current threshold {HOST_LATENCY_THRESHOLD_MS}ms, aborting]")
+        abort_live_migration(cloud, hostname, logger)
+        return
 
 
 def get_instance_from_uuid(cloud, instance_id, logger):
@@ -267,11 +313,14 @@ def live_migration(cloud, instance, compute_node, logger):
     # ping before live migration starts
     # instance_first_ping_status == True . Ping was reachable
     # instance_first_ping_status == False. Unreachable
-    instance_first_ping_status = ping_instance(instance.name, logger)
+    instance_first_ping_status = is_available(instance.name, logger)
 
     # if unreachable from beginning. do not probe instance
     if not instance_first_ping_status:
         log_event(logger, INFO, "[{} unreachable][do not probe instance]"
+                  .format(instance.name))
+    else:
+        log_event(logger, INFO, "[{} reachable][do probe instance]"
                   .format(instance.name))
 
     # start time
@@ -290,6 +339,7 @@ def live_migration(cloud, instance, compute_node, logger):
             instance.live_migrate(host=None, block_migration=True)
             log_event(logger, INFO, "[{}][live migration][started]"
                       .format(instance.name))
+
         except Exception as e:
             log_event(logger, ERROR,
                       "[{}][error during block live migration][{}]"
@@ -620,7 +670,7 @@ def vms_migration(cloud, compute_node, migration_stats, logger, exclusive_vms_li
                         # update migration stats migrated_vms
                         migration_stats.update_migrated_vms([u_instance.name])
                         # ping instance after migration success
-                        ping_result = ping_instance(u_instance.name, logger)
+                        ping_result = is_available(u_instance.name, logger)
                         if not ping_result:
                             logger.warning("[{}][unable to ping after "
                                            "migration]"
@@ -1053,7 +1103,6 @@ def check_big_vm(cloud, compute_node, logger):
 
 
 def host_migration(region, host, migration_stats, logger, exclusive_vms_list=None, skip_vms_list=None):
-
     # kernel check and see if it needs update
     if KERNEL_CHECK:
         log_event(logger, INFO, "[{}][checking kernel version]".format(host))
@@ -1419,6 +1468,22 @@ def set_global_vars_cli_execution(args):
     if args.stop_at_migration_failure is not None:
         STOP_AT_MIGRATION_FAILURE = args.stop_at_migration_failure
 
+    # Ping probes
+    global PING_UNAVAILABLE_PERCENT
+    if args.ping_loss_threshold is not None:
+        PING_UNAVAILABLE_PERCENT = args.ping_loss_threshold
+
+    global HOST_LATENCY_THRESHOLD_MS
+    if args.ping_latency_threshold is not None:
+        HOST_LATENCY_THRESHOLD_MS = args.ping_latency_threshold
+
+    global ABORT_ON_PING_LOSS
+    if args.abort_on_ping_loss is not None:
+        ABORT_ON_PING_LOSS = args.abort_on_ping_loss
+
+    global ABORT_ON_PING_LATENCY
+    if args.abort_on_ping_latency is not None:
+        ABORT_ON_PING_LATENCY = args.abort_on_ping_latency
 
 def config_file_execution(args):
     # parse the config file

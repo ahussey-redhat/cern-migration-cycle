@@ -157,6 +157,18 @@ def cli_execution(args):
                         type=lambda x: bool(strtobool(x)),
                         help='stop at first migration failure and skips compute node')
 
+    parser.add_argument('--abort-on-ping-loss', dest='abort_on_ping_loss',
+                        type=lambda x: bool(strtobool(x)),
+                        help="abort migration if the ping loss threshold is reached")
+    parser.add_argument('--ping-loss-threshold', dest='ping_loss_threshold',
+                        type=int, help='maximum percentage of pings allowed to be lost during live migrations')
+
+    parser.add_argument('--abort-on-ping-latency', dest='abort_on_ping_latency',
+                        type=lambda x: bool(strtobool(x)),
+                        help="abort migration if the ping latency threshold is reached")
+    parser.add_argument('--ping-latency-threshold', dest='ping_latency_threshold',
+                        type=int, help='maximum average ping latency in ms allowed during live migrations')
+
     parser.add_argument('--exclusive-vms-list', dest='exclusive_vms_list',
                         nargs='+', help='exclusive list of VMs that will be migrated if matched')
 
