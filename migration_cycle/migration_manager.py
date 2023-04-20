@@ -235,11 +235,12 @@ def is_available(hostname, logger):
     return r and r['loss'] < 100
 
 
-def probe_instance_availability(cloud, hostname, period, logger):
+def probe_instance_availability(cloud, hostname, period, logger, migration_stats):
     """probes the instance availability (ping) during
        an interval of time (seconds)."""
 
     ping_summary = ping_instance(hostname, period, logger)
+    migration_stats.update_ping_report(hostname, ping_summary)
 
     if not ping_summary:
         log_event(logger, ERROR, f"[unexpected error pinging {hostname}, aborting]")
@@ -358,7 +359,7 @@ def report_migration_progress(cloud, instance, migration_id, logger):
         if "is not in progress" not in str(ex):
             log_event(logger, WARNING, f"[failed to get migration progress report for {migration_id} for {instance.id}: {ex}]")
 
-def live_migration(cloud, instance, compute_node, logger):
+def live_migration(cloud, instance, compute_node, logger, migration_stats):
     # ping before live migration starts
     # instance_first_ping_status == True . Ping was reachable
     # instance_first_ping_status == False. Unreachable
@@ -417,7 +418,8 @@ def live_migration(cloud, instance, compute_node, logger):
         if mig and mig.status == 'running' and instance_first_ping_status:
             probe_instance_availability(cloud, instance.name,
                                         SLEEP_TIME,
-                                        logger)
+                                        logger,
+                                        migration_stats)
 
         if mig and mig.status != 'running':
             log_event(logger, INFO, f"[{instance.name}][live migration status: {mig.status}]")
@@ -718,7 +720,8 @@ def vms_migration(cloud, compute_node, migration_stats, logger, exclusive_vms_li
                     res = live_migration(cloud,
                                          u_instance,
                                          compute_node,
-                                         logger)
+                                         logger,
+                                         migration_stats)
                     # if live migration fails and stop at migration failure is True
                     # skip whole compute node and return
                     if not res and STOP_AT_MIGRATION_FAILURE:
