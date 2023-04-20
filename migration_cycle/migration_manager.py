@@ -150,15 +150,35 @@ def get_instance_from_hostname(cloud, hostname, logger):
 def abort_live_migration(cloud, hostname, logger):
     """aborts on-going live migration"""
     instance = get_instance_from_hostname(cloud, hostname, logger)
-    migration_id = get_migration_id(cloud, instance, logger)
+    migration_id = get_migration_id(cloud, instance.id, logger)
+
+    if not migration_id:
+        log_event(logger, INFO, f"[{hostname}][no active migration found to abort, maybe it already finished?]")
+        return
+
+    log_event(logger, INFO, f"[{hostname}][aborting migration {migration_id}]")
+
     nc = init_nova_client(cloud, logger)
     try:
         nc.server_migrations.live_migration_abort(instance, migration_id)
         log_event(logger, INFO, "[{}][live migration aborted]"
                   .format(hostname))
+
+        start = time.time()
+        while time.time() < start + ABORT_MIGRATION_TIMEOUT:
+            instance = get_instance_from_hostname(cloud, hostname, logger)
+            log_event(logger, INFO, f"[{hostname}][waiting for migration abort to take effect, current status {instance.status}]")
+            if instance.status != "MIGRATING":
+                log_event(logger, INFO, f"[{hostname}][instance found in state {instance.status}, migration is considered aborted]")
+                return
+            time.sleep(1)
+
+        # Migration was not aborted... or didn't transition in time...
+        raise RuntimeError(f"live migration abort for {hostname} with ID {migration_id} didn't happen in time")
     except Exception as e:
         log_event(logger, ERROR, "[{}][failed to abort live migration][{}]"
                   .format(hostname, e))
+        raise RuntimeError(f"failed to abort live migration {migration_id} for {hostname}")
 
 
 def report_ping(output):
