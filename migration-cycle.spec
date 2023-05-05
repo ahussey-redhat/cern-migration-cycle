@@ -1,5 +1,5 @@
 Name:           migration-cycle
-Version:        0.2.4
+Version:        0.2.5
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -93,6 +93,19 @@ rm /lib/systemd/system/migration_cycle.service
 rm -rf %{buildroot}
 
 %changelog
+* Fri May 05 2023 Luis Fernandez Alvarez <luis.fernandez.alvarez@cern.ch> - 0.2.5
+- Add ping reports to migration_stats and MONIT utils to report them
+- Send migration_stats to MONIT
+- Report summary per thread to be aware of errors
+- Add option to pass an exclusive list of VMs to migrate
+- Add option to pass a list of VM names that should be skipped
+- Redo the ping probing (add loss & latency checks)
+- Fix abort implementation for migrations
+- Add compute node destination to logs
+- Add migration progress report for disk and memory
+- Update migration_stats with ping report
+- Add migration remaining time estimation to progress report
+
 * Tue Mar 22 2022 Jayaditya Gupta <jayaditya.gupta@cern.ch> - 0.2.4
 - kerb5 ticket was not made in kernel_reboot_upgrade, thus results in failure
 - poweroff bug fix. Compute and roger alarm will not be enabled if poweroff is provided
