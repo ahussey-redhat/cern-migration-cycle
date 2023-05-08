@@ -1,5 +1,5 @@
 Name:           migration-cycle
-Version:        0.2.5
+Version:        0.2.6
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -93,6 +93,9 @@ rm /lib/systemd/system/migration_cycle.service
 rm -rf %{buildroot}
 
 %changelog
+* Mon May 08 2023 Luis Fernandez Alvarez <luis.fernandez.alvarez@cern.ch> - 0.2.6
+- Remove log line for metrics report
+
 * Fri May 05 2023 Luis Fernandez Alvarez <luis.fernandez.alvarez@cern.ch> - 0.2.5
 - Add ping reports to migration_stats and MONIT utils to report them
 - Send migration_stats to MONIT

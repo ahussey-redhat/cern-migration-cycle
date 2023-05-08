@@ -21,7 +21,6 @@ class MonitMetrics(object):
         monit_payload = []
         for vm, reports in stats.vm_ping_reports.items():
             for r in reports:
-                log_event(logger, INFO, f"[{vm} metrics: {reports}]")
                 monit_payload.append(
                     {
                         'producer': self.producer,
