@@ -253,7 +253,7 @@ def probe_instance_availability(cloud, hostname, period, logger, migration_stats
         abort_live_migration(cloud, hostname, logger)
         return
 
-    if ping_summary['rtt_avg'] >= HOST_LATENCY_THRESHOLD_MS and ABORT_ON_PING_LATENCY:
+    if ping_summary['rtt_avg'] and ping_summary['rtt_avg'] >= HOST_LATENCY_THRESHOLD_MS and ABORT_ON_PING_LATENCY:
         log_event(logger, ERROR, f"[{hostname} latency is greater than current threshold {HOST_LATENCY_THRESHOLD_MS}ms, aborting]")
         abort_live_migration(cloud, hostname, logger)
         return
