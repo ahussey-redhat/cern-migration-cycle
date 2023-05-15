@@ -1,5 +1,5 @@
 Name:           migration-cycle
-Version:        0.2.6
+Version:        0.2.7
 Release:        1%{?dist}
 Summary:        migration cycle tool
 Source0:        %{name}-%{version}.tar.gz
@@ -93,6 +93,9 @@ rm /lib/systemd/system/migration_cycle.service
 rm -rf %{buildroot}
 
 %changelog
+* Mon May 15 2023 Luis Fernandez Alvarez <luis.fernandez.alvarez@cern.ch> - 0.2.7
+- Check rtt_avg for None in case of 100% ping loss and abort is disabled
+
 * Mon May 08 2023 Luis Fernandez Alvarez <luis.fernandez.alvarez@cern.ch> - 0.2.6
 - Remove log line for metrics report
 
